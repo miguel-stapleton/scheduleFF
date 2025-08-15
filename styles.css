@@ -12,8 +12,12 @@ body {
     min-height: 100vh;
 }
 
+html, body {
+    overflow-x: hidden; /* final safeguard to prevent page-level horizontal scroll */
+}
+
 .container {
-    max-width: 1400px;
+    max-width: 100%; /* use full viewport width so more columns can fit */
     margin: 0 auto;
     background: white;
     border-radius: 15px;
@@ -21,6 +25,7 @@ body {
     padding: 30px;
     padding-top: 240px;
     position: relative;
+    overflow-x: hidden;
 }
 
 header {
@@ -325,9 +330,11 @@ h1 {
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
     overflow: hidden;
     min-height: 600px;
+    min-width: 0; /* allow children to shrink */
 }
 
 .time-column {
+    flex: 0 0 100px; /* fixed alongside flex row */
     width: 100px;
     background: #f8f9fa;
     border-right: 2px solid #e9ecef;
@@ -373,12 +380,14 @@ h1 {
 
 .artists-container {
     display: flex;
-    flex: 1;
-    overflow-x: auto;
+    flex: 1 1 auto;
+    overflow-x: hidden;
+    min-width: 0; /* critical so this flex child can shrink inside schedule-container */
 }
 
 .artist-column {
-    min-width: 250px;
+    flex: 1 1 0;
+    min-width: 0;
     border-right: 2px solid #e9ecef;
     position: relative;
 }
@@ -421,11 +430,14 @@ h1 {
     color: white;
     text-align: center;
     font-weight: 400;
-    font-size: 18px;
+    font-size: 16px;
     letter-spacing: 1px;
     text-transform: uppercase;
-    font-size: 16px;
     width: 100%;
+    min-width: 0; /* prevent input from enforcing a wider min-content size */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .artist-header input::placeholder {
@@ -551,23 +563,34 @@ h1 {
 
 .client-info {
     padding: 8px;
+    min-width: 0;
+    overflow: hidden;
 }
 
 .client-name {
     font-weight: bold;
     font-size: 12px;
     margin-bottom: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .client-service {
     font-size: 10px;
     opacity: 0.8;
     margin-bottom: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .client-duration {
     font-size: 10px;
     opacity: 0.7;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .client-name {
@@ -579,6 +602,115 @@ h1 {
     font-size: 11px;
     opacity: 0.9;
     font-weight: 400;
+}
+
+/* Special blocks (Arrival + setup, Final touch-ups) */
+.client-block.special {
+    text-align: center;
+}
+
+.client-block.special .client-info {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    padding: 0 8px; /* keep side padding, remove vertical to help centering */
+}
+
+/* Hide extra lines so only the title shows, improving vertical centering */
+.client-block.special .client-service,
+.client-block.special .client-duration {
+    display: none;
+}
+
+.client-block.special .client-name {
+    margin: 0;
+    line-height: 1.1;
+}
+
+/* Small (15-minute) blocks: make text smaller and centered, keep time visible */
+.client-block.small .client-info {
+    display: flex;
+    flex-direction: row; /* side-by-side */
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    height: 100%;
+    padding: 0 2px;
+    text-align: center;
+}
+
+.client-block.small .client-name {
+    font-size: 11px; /* larger */
+    font-weight: 600;
+    margin: 0;
+    line-height: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 60%; /* leave room for time */
+    flex: 1 1 auto;
+}
+
+.client-block.small .client-duration {
+    font-size: 10px; /* larger */
+    font-weight: 500;
+    line-height: 1;
+    opacity: 0.95;
+    white-space: nowrap;
+    flex: 0 0 auto;
+}
+
+/* Hide service line to save space on tiny blocks */
+.client-block.small .client-service {
+    display: none;
+}
+
+/* Medium (30-minute) blocks: place time to the right of title, service below */
+.client-block.medium .client-info {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    grid-template-rows: auto auto;
+    align-items: center;
+    gap: 2px 6px;
+    height: 100%;
+    padding: 0 4px;
+}
+
+.client-block.medium .client-name {
+    grid-column: 1;
+    grid-row: 1;
+    font-size: 12px;
+    font-weight: 600;
+    margin: 0;
+    line-height: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.client-block.medium .client-duration {
+    grid-column: 2;
+    grid-row: 1;
+    font-size: 11px;
+    opacity: 0.9;
+    white-space: nowrap;
+    text-align: right;
+}
+
+.client-block.medium .client-service {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    font-size: 11px;
+    opacity: 0.85;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* For special 15-minute blocks, re-show the time range */
+.client-block.special.small .client-duration {
+    display: block;
 }
 
 /* Color input group styles */
@@ -892,7 +1024,7 @@ select:focus {
     }
     
     .artist-column {
-        min-width: 200px;
+        min-width: 0;
     }
     
     .detail-row {
@@ -926,6 +1058,16 @@ select:focus {
 
 .exporting header {
     margin-bottom: 20px;
+}
+
+/* Adjust logo position specifically for export to better match on-screen layout */
+.exporting .logo-section {
+    top: 100%; /* was 120% on-screen; move higher for export */
+}
+
+/* Make logo a bit smaller in exported image */
+.exporting .app-logo {
+    height: 150px; /* was 180px on-screen */
 }
 
 /* Preserve artist header styling during export */

@@ -24,7 +24,6 @@ export default function WeddingScheduleApp() {
   const [settings, setSettings] = useState({
     brideHairTwoParts: false,
     brideReadyTime: '16:00',
-    touchupDuration: 15,
     weddingDate: '',
     weddingLocation: '',
     timeStartsAt: '06:00',
@@ -73,18 +72,53 @@ export default function WeddingScheduleApp() {
     if (settings.timeStartsAt && settings.timeFinishesAt) {
       const newTimeSlots = generateTimeSlots(settings.timeStartsAt, settings.timeFinishesAt);
       
-      // Preserve client positions by mapping from startTime to new timeSlotIndex
+      // Preserve client positions by mapping to the nearest valid slot
+      // Prefer exact previous startTime when available; otherwise, derive from prior index.
       setClients(prevClients => {
         return prevClients.map(client => {
-          if (client.timeSlotIndex !== undefined && client.startTime) {
-            // Find the new index for this client's start time
-            const newTimeSlotIndex = newTimeSlots.findIndex(slot => slot === client.startTime);
-            if (newTimeSlotIndex !== -1) {
-              return { ...client, timeSlotIndex: newTimeSlotIndex };
-            } else {
-              // If the time slot no longer exists, move client back to unscheduled
-              const { timeSlotIndex, startTime, artistIndex, ...unscheduledClient } = client;
-              return unscheduledClient;
+          if (client.artistIndex !== undefined) {
+            // Determine previous start time string from either saved startTime or old index
+            const previousStartStr = client.startTime ?? (client.timeSlotIndex !== undefined ? timeSlots[client.timeSlotIndex] : undefined);
+
+            // Helper to clamp index within bounds
+            const clampIndex = (idx) => Math.max(0, Math.min(newTimeSlots.length - 1, idx));
+
+            if (previousStartStr && newTimeSlots.length > 0) {
+              // Prefer exact match
+              const exactIdx = newTimeSlots.findIndex(slot => slot === previousStartStr);
+              if (exactIdx !== -1) {
+                return { ...client, timeSlotIndex: exactIdx, startTime: newTimeSlots[exactIdx] };
+              }
+
+              // Otherwise clamp to new range
+              const [ph, pm] = previousStartStr.split(':').map(Number);
+              if (!Number.isNaN(ph) && !Number.isNaN(pm)) {
+                const prevMinutes = ph * 60 + pm;
+                const [sh, sm] = newTimeSlots[0].split(':').map(Number);
+                const [eh, em] = newTimeSlots[newTimeSlots.length - 1].split(':').map(Number);
+                const startMinutes = sh * 60 + sm;
+                const endMinutes = eh * 60 + em;
+
+                let targetMinutes = prevMinutes;
+                if (prevMinutes < startMinutes) targetMinutes = startMinutes;
+                if (prevMinutes > endMinutes) targetMinutes = endMinutes;
+
+                const hourStr = String(Math.floor(targetMinutes / 60)).padStart(2, '0');
+                const minuteStr = String(targetMinutes % 60).padStart(2, '0');
+                const clampedStr = `${hourStr}:${minuteStr}`;
+                let idx = newTimeSlots.findIndex(t => t === clampedStr);
+                if (idx === -1) {
+                  const diff = targetMinutes - (startMinutes);
+                  idx = clampIndex(Math.round(diff / 15));
+                }
+                return { ...client, timeSlotIndex: idx, startTime: newTimeSlots[idx] };
+              }
+            }
+
+            // Fallbacks: if we still have a previous index, clamp it; otherwise leave as-is
+            if (client.timeSlotIndex !== undefined && newTimeSlots.length > 0) {
+              const idx = clampIndex(client.timeSlotIndex);
+              return { ...client, timeSlotIndex: idx, startTime: newTimeSlots[idx] };
             }
           }
           return client;
@@ -157,7 +191,7 @@ export default function WeddingScheduleApp() {
       name: name,
       service: 'makeup',
       type: 'bride',
-      color: '#ffd700',
+      color: '#ffae00',
       duration: durations.bride.makeup
     });
 
@@ -170,7 +204,7 @@ export default function WeddingScheduleApp() {
         name: `${name} - Hair Part I`,
         service: 'hair-part1',
         type: 'bride',
-        color: '#ffd700',
+        color: '#ffae00',
         duration: durations.bride.hairPart1 || 60
       });
       brideBlocks.push({
@@ -178,7 +212,7 @@ export default function WeddingScheduleApp() {
         name: `${name} - Hair Part II`,
         service: 'hair-part2',
         type: 'bride',
-        color: '#ffd700',
+        color: '#ffae00',
         duration: durations.bride.hairPart2 || 30
       });
     } else {
@@ -188,7 +222,7 @@ export default function WeddingScheduleApp() {
         name: name,
         service: 'hair',
         type: 'bride',
-        color: '#ffd700',
+        color: '#ffae00',
         duration: durations.bride.hair
       });
     }
@@ -208,18 +242,6 @@ export default function WeddingScheduleApp() {
     const specialBlocks = [];
     const baseId = Date.now();
     
-    // Create two "Arrival + setup" blocks (grey) - flexible positioning
-    for (let i = 0; i < 2; i++) {
-      specialBlocks.push({
-        id: `${baseId}-arrival-${i}`,
-        name: 'Arrival + setup',
-        service: '',
-        type: 'special',
-        color: '#808080',
-        duration: 15
-      });
-    }
-    
     // Create two "final touch-ups" blocks (bride yellow) - auto-positioned
     // Calculate start time: 15 minutes before bride ready time
     const [hours, minutes] = brideReadyTime.split(':').map(Number);
@@ -237,7 +259,7 @@ export default function WeddingScheduleApp() {
         name: 'Final touch-ups',
         service: '',
         type: 'special',
-        color: '#ffd700',
+        color: '#ffae00',
         duration: 15,
         startTime: touchupStartTime,
         endTime: brideReadyTime,
@@ -250,8 +272,25 @@ export default function WeddingScheduleApp() {
     console.log('All special blocks created:', specialBlocks);
     
     setClients(prev => {
-      const filtered = prev.filter(c => c.type !== 'special');
-      const newClients = [...filtered, ...specialBlocks];
+      // Preserve existing Arrival blocks; only replace Final touch-ups
+      const existingArrivals = prev.filter(c => c.type === 'special' && c.name === 'Arrival + setup');
+      const withoutTouchups = prev.filter(c => !(c.type === 'special' && c.name === 'Final touch-ups'));
+
+      // Ensure exactly two Arrival blocks by adding missing ones (do NOT remove placed ones)
+      const arrivalsNeeded = Math.max(0, 2 - existingArrivals.length);
+      const arrivalsToAdd = [];
+      for (let i = 0; i < arrivalsNeeded; i++) {
+        arrivalsToAdd.push({
+          id: `${baseId}-arrival-${i}`,
+          name: 'Arrival + setup',
+          service: '',
+          type: 'special',
+          color: '#808080',
+          duration: 15
+        });
+      }
+
+      const newClients = [...withoutTouchups, ...arrivalsToAdd, ...specialBlocks];
       console.log('Setting clients to:', newClients);
       return newClients;
     });
@@ -303,11 +342,13 @@ export default function WeddingScheduleApp() {
       ));
     }
     
-    // Create special blocks for bride ready time
-    createSpecialBlocks(otherSettings.brideReadyTime);
-    
     closeModal('settings');
-  }, [clients, createBrideBlocks, createSpecialBlocks]);
+  }, [clients, settings.brideReadyTime, createBrideBlocks]);
+
+  // Ensure special blocks exist on mount and whenever bride ready time changes
+  useEffect(() => {
+    createSpecialBlocks(settings.brideReadyTime);
+  }, [settings.brideReadyTime, createSpecialBlocks]);
 
   // Export functionality
   const exportSchedule = useCallback(async () => {
@@ -395,15 +436,16 @@ export default function WeddingScheduleApp() {
       hair: [{ name: 'Hairstylist', editable: true }],
     });
     setBrideName(scheduleData.brideName || '');
-    setSettings(scheduleData.settings || {
+    const incomingSettings = scheduleData.settings || {
       brideHairTwoParts: false,
       brideReadyTime: '16:00',
-      touchupDuration: 15,
       weddingDate: '',
       weddingLocation: '',
       timeStartsAt: '06:00',
       timeFinishesAt: '18:00',
-    });
+    };
+    const { touchupDuration, ...sanitizedSettings } = incomingSettings; // drop legacy field
+    setSettings(sanitizedSettings);
     setDurations(scheduleData.durations || {
       bride: { makeup: 90, hair: 90, hairPart1: 60, hairPart2: 30 },
       guest: { makeup: 45, hair: 45 },

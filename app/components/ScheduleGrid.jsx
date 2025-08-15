@@ -21,11 +21,13 @@ export default function ScheduleGrid({ timeSlots, artists, clients, onUpdateClie
   // Handle drag start
   const handleDragStart = useCallback((e, client) => {
     setDraggedClient(client);
-    const rect = e.target.getBoundingClientRect();
+    const rect = e.currentTarget.getBoundingClientRect();
     setDragOffset({
       x: e.clientX - rect.left,
       y: e.clientY - rect.top
     });
+    // Ensure cross-browser drag works (Safari/Firefox sometimes require data)
+    try { e.dataTransfer.setData('text/plain', String(client.id)); } catch {}
     e.dataTransfer.effectAllowed = 'move';
   }, []);
 
@@ -57,6 +59,25 @@ export default function ScheduleGrid({ timeSlots, artists, clients, onUpdateClie
     setDraggedClient(null);
   }, [draggedClient, clients, timeSlots, onUpdateClients]);
 
+  // Container-level drag handlers so tall blocks don't block underlying slots
+  const handleContainerDragOver = useCallback((e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  }, []);
+
+  const handleContainerDrop = useCallback((e, artistIndex) => {
+    e.preventDefault();
+    if (!draggedClient) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    let offsetY = e.clientY - rect.top;
+    if (Number.isNaN(offsetY)) offsetY = 0;
+    let index = Math.floor(offsetY / timeSlotHeight);
+    // Clamp to valid range
+    index = Math.max(0, Math.min(timeSlots.length - 1, index));
+    // Reuse existing drop logic
+    handleDrop(e, artistIndex, index);
+  }, [draggedClient, timeSlotHeight, timeSlots, handleDrop]);
+
   // Get client blocks positioned in the grid
   const getPositionedClients = useCallback(() => {
     return clients.filter(client => 
@@ -66,10 +87,15 @@ export default function ScheduleGrid({ timeSlots, artists, clients, onUpdateClie
 
   // Get unscheduled clients
   const getUnscheduledClients = useCallback(() => {
-    return clients.filter(client => 
-      (client.artistIndex === undefined || client.timeSlotIndex === undefined) &&
-      !client.autoPositioned // Exclude auto-positioned blocks from unscheduled list
-    );
+    return clients.filter(client => {
+      const isUnscheduled = (client.artistIndex === undefined || client.timeSlotIndex === undefined) && !client.autoPositioned;
+      if (!isUnscheduled) return false;
+      // Do not show Arrival blocks in unscheduled if they still have an artist assigned
+      if (client.type === 'special' && client.name === 'Arrival + setup' && client.artistIndex !== undefined) {
+        return false;
+      }
+      return true;
+    });
   }, [clients]);
 
   // Calculate duration in slots
@@ -249,7 +275,7 @@ export default function ScheduleGrid({ timeSlots, artists, clients, onUpdateClie
       {/* Artists Container */}
       <div className="artists-container" ref={gridRef}>
         {allArtists.map((artist, artistIndex) => (
-          <div key={`${artist.specialty}-${artistIndex}`} className="artist-column">
+          <div key={`${artist.specialty}-${artistIndex}`} className="artist-column" style={{ flex: '1 1 0', minWidth: 0 }}>
             <div className={`artist-header ${artist.specialty}`}>
               <input
                 type="text"
@@ -281,14 +307,16 @@ export default function ScheduleGrid({ timeSlots, artists, clients, onUpdateClie
               />
             </div>
             
-            <div className="artist-schedule">
+            <div
+              className="artist-schedule"
+              onDragOver={handleContainerDragOver}
+              onDrop={(e) => handleContainerDrop(e, artistIndex)}
+            >
               {timeSlots.map((time, timeSlotIndex) => (
                 <div
                   key={timeSlotIndex}
                   className="schedule-slot"
                   style={{ height: timeSlotHeight }}
-                  onDragOver={handleDragOver}
-                  onDrop={(e) => handleDrop(e, artistIndex, timeSlotIndex)}
                 >
                   {/* Render client blocks that start at this time slot */}
                   {getPositionedClients()
@@ -301,7 +329,7 @@ export default function ScheduleGrid({ timeSlots, artists, clients, onUpdateClie
                       return (
                         <div
                           key={client.id}
-                          className={`client-block ${client.type}`}
+                          className={`client-block ${client.type} ${durationSlots <= 1 ? 'small' : durationSlots <= 2 ? 'medium' : ''}`}
                           style={{
                             backgroundColor: client.color,
                             height: durationSlots * timeSlotHeight - 2,
@@ -312,6 +340,7 @@ export default function ScheduleGrid({ timeSlots, artists, clients, onUpdateClie
                           }}
                           draggable
                           onDragStart={(e) => handleDragStart(e, client)}
+                          onDragOver={(e) => { e.preventDefault(); try { e.dataTransfer.dropEffect = 'move'; } catch {} }}
                           onClick={() => onOpenEditBlockModal(client)}
                           title={`${client.name} - ${client.service} (${client.duration || durations[client.type]?.[client.service] || 45} min)\nClick to edit`}
                         >

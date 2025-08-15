@@ -6,7 +6,6 @@ export default function SettingsModal({ onClose, onSave, currentSettings, durati
     brideName: '',
     brideHairTwoParts: false,
     brideReadyTime: '16:00',
-    touchupDuration: 15,
     weddingDate: '',
     weddingLocation: '',
     timeStartsAt: '06:00',
@@ -30,7 +29,6 @@ export default function SettingsModal({ onClose, onSave, currentSettings, durati
       brideName: '',
       brideHairTwoParts: false,
       brideReadyTime: '16:00',
-      touchupDuration: 15,
       weddingDate: '',
       weddingLocation: '',
       timeStartsAt: '06:00',
@@ -106,19 +104,6 @@ export default function SettingsModal({ onClose, onSave, currentSettings, durati
           </div>
           
           <div className="form-group">
-            <label>
-              <input
-                type="checkbox"
-                id="settings-bride-hair-two-parts"
-                name="brideHairTwoParts"
-                checked={formData.brideHairTwoParts}
-                onChange={handleInputChange}
-              />
-              Split bride's hair into two parts
-            </label>
-          </div>
-          
-          <div className="form-group">
             <label htmlFor="settings-bride-ready-time">Bride Ready Time:</label>
             <input
               type="time"
@@ -129,18 +114,7 @@ export default function SettingsModal({ onClose, onSave, currentSettings, durati
             />
           </div>
           
-          <div className="form-group">
-            <label htmlFor="settings-touchup-duration">Touchup Duration (minutes):</label>
-            <input
-              type="number"
-              id="settings-touchup-duration"
-              name="touchupDuration"
-              value={formData.touchupDuration}
-              onChange={handleInputChange}
-              min="5"
-              max="60"
-            />
-          </div>
+          {/* Touch-up duration is fixed at 15 minutes; field removed from UI */}
           
           <div className="form-group">
             <label htmlFor="settings-wedding-date">Wedding Date:</label>
@@ -166,7 +140,7 @@ export default function SettingsModal({ onClose, onSave, currentSettings, durati
           </div>
           
           <div className="form-group">
-            <label htmlFor="settings-time-starts-at">Time Starts At:</label>
+            <label htmlFor="settings-time-starts-at">Time shows from:</label>
             <input
               type="time"
               id="settings-time-starts-at"
@@ -177,7 +151,7 @@ export default function SettingsModal({ onClose, onSave, currentSettings, durati
           </div>
           
           <div className="form-group">
-            <label htmlFor="settings-time-finishes-at">Time Finishes At:</label>
+            <label htmlFor="settings-time-finishes-at">Time shows until:</label>
             <input
               type="time"
               id="settings-time-finishes-at"
@@ -240,6 +214,19 @@ export default function SettingsModal({ onClose, onSave, currentSettings, durati
                 </div>
               </>
             )}
+            {/* Moved checkbox under hair duration inputs */}
+            <div className="form-group">
+              <label>
+                <input
+                  type="checkbox"
+                  id="settings-bride-hair-two-parts"
+                  name="brideHairTwoParts"
+                  checked={formData.brideHairTwoParts}
+                  onChange={handleInputChange}
+                />
+                Split bride's hair into two parts
+              </label>
+            </div>
           </div>
           <div className="duration-group">
             <h4>Guests</h4>
