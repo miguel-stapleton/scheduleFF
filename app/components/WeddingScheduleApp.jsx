@@ -360,47 +360,63 @@ export default function WeddingScheduleApp() {
     }
   }, [brideName]);
 
-  // Save/Load functionality (localStorage for now, can be extended to MongoDB)
-  const saveSchedule = useCallback((scheduleName) => {
-    if (typeof window === 'undefined') return;
-    
+  // Save/Load functionality (MongoDB via API)
+  const saveSchedule = useCallback(async (scheduleName) => {
     const scheduleData = {
       clients,
       artists,
       settings,
       durations,
-      brideName: settings.brideName
+      brideName,
     };
-    
-    const savedSchedules = JSON.parse(localStorage.getItem('savedSchedules') || '{}');
-    savedSchedules[scheduleName] = scheduleData;
-    localStorage.setItem('savedSchedules', JSON.stringify(savedSchedules));
-  }, [clients, artists, settings, durations]);
-
-  const loadSchedule = useCallback((scheduleName) => {
-    if (typeof window === 'undefined') return;
-    
-    const savedSchedules = JSON.parse(localStorage.getItem('savedSchedules') || '{}');
-    const scheduleData = savedSchedules[scheduleName];
-    
-    if (scheduleData) {
-      setClients(scheduleData.clients || []);
-      setArtists(scheduleData.artists || {
-        makeup: [{ name: 'Make-up Artist', editable: true }],
-        hair: [{ name: 'Hairstylist', editable: true }]
-      });
-      setSettings(scheduleData.settings || { brideName: '', hairParts: 2, readyTime: '11:00', touchupDuration: 15 });
-      setDurations(scheduleData.durations || {
-        makeup: { 'Full Face': 45, 'Touch-up': 15 },
-        hair: { 'Updo': 60, 'Blowout': 30, 'Touch-up': 15 }
-      });
+    const res = await fetch('/api/schedules', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: scheduleName, data: scheduleData }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to save schedule');
     }
+    return res.json();
+  }, [clients, artists, settings, durations, brideName]);
+
+  const loadScheduleById = useCallback(async (scheduleId) => {
+    const res = await fetch(`/api/schedules/${scheduleId}`);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to load schedule');
+    }
+    const payload = await res.json();
+    const scheduleData = payload?.data || {};
+    setClients(scheduleData.clients || []);
+    setArtists(scheduleData.artists || {
+      makeup: [{ name: 'Make-up Artist', editable: true }],
+      hair: [{ name: 'Hairstylist', editable: true }],
+    });
+    setBrideName(scheduleData.brideName || '');
+    setSettings(scheduleData.settings || {
+      brideHairTwoParts: false,
+      brideReadyTime: '16:00',
+      touchupDuration: 15,
+      weddingDate: '',
+      weddingLocation: '',
+      timeStartsAt: '06:00',
+      timeFinishesAt: '18:00',
+    });
+    setDurations(scheduleData.durations || {
+      bride: { makeup: 90, hair: 90, hairPart1: 60, hairPart2: 30 },
+      guest: { makeup: 45, hair: 45 },
+    });
   }, []);
 
-  const getSavedSchedules = useCallback(() => {
-    if (typeof window === 'undefined') return [];
-    const savedSchedules = JSON.parse(localStorage.getItem('savedSchedules') || '{}');
-    return Object.keys(savedSchedules);
+  const getSavedSchedules = useCallback(async () => {
+    const res = await fetch('/api/schedules');
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to list schedules');
+    }
+    return res.json();
   }, []);
 
   // Click outside handler for modals
@@ -450,7 +466,7 @@ export default function WeddingScheduleApp() {
         onOpenSettingsModal={() => openModal('settings')}
         onExport={exportSchedule}
         onSave={saveSchedule}
-        onLoad={loadSchedule}
+        onLoad={loadScheduleById}
         getSavedSchedules={getSavedSchedules}
       />
       

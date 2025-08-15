@@ -15,15 +15,43 @@ export default function Header({
   getSavedSchedules 
 }) {
   const [showLoadMenu, setShowLoadMenu] = useState(false);
-  const savedSchedules = getSavedSchedules();
+  const [savedSchedules, setSavedSchedules] = useState([]);
+  const [isLoadingSaved, setIsLoadingSaved] = useState(false);
 
-  const handleSave = () => {
-    onSave();
+  const handleSave = async () => {
+    const defaultName = brideName ? `${brideName} schedule` : 'Untitled Schedule';
+    const name = typeof window !== 'undefined'
+      ? prompt('Enter a name for this schedule:', defaultName)
+      : defaultName;
+    if (name && name.trim()) {
+      try {
+        await onSave(name.trim());
+        alert('Schedule saved.');
+      } catch (e) {
+        alert(`Save failed: ${e?.message || 'Unknown error'}`);
+      }
+    }
   };
 
   const handleLoad = (scheduleName) => {
     onLoad(scheduleName);
     setShowLoadMenu(false);
+  };
+
+  const toggleLoadMenu = async () => {
+    if (!showLoadMenu) {
+      setIsLoadingSaved(true);
+      try {
+        const items = await getSavedSchedules();
+        setSavedSchedules(items);
+      } catch (e) {
+        console.error(e);
+        setSavedSchedules([]);
+      } finally {
+        setIsLoadingSaved(false);
+      }
+    }
+    setShowLoadMenu(!showLoadMenu);
   };
 
   return (
@@ -48,19 +76,25 @@ export default function Header({
               <button 
                 className="btn btn-icon-small has-icon" 
                 title="Load Schedule"
-                onClick={() => setShowLoadMenu(!showLoadMenu)}
+                onClick={toggleLoadMenu}
               >
                 <img src="/images/openlogo.png" alt="Load Schedule" />
               </button>
-              {showLoadMenu && savedSchedules.length > 0 && (
+              {showLoadMenu && (
                 <div className="dropdown-menu">
-                  {savedSchedules.map((scheduleName) => (
+                  {isLoadingSaved && (
+                    <div className="dropdown-item" aria-disabled>Loading...</div>
+                  )}
+                  {!isLoadingSaved && savedSchedules.length === 0 && (
+                    <div className="dropdown-item" aria-disabled>No saved schedules</div>
+                  )}
+                  {!isLoadingSaved && savedSchedules.length > 0 && savedSchedules.map((item) => (
                     <button
-                      key={scheduleName}
+                      key={item.id}
                       className="dropdown-item"
-                      onClick={() => handleLoad(scheduleName)}
+                      onClick={() => handleLoad(item.id)}
                     >
-                      {scheduleName}
+                      {item.name || item?.data?.brideName || new Date(item.savedAt).toLocaleString()}
                     </button>
                   ))}
                 </div>
