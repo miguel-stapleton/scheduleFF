@@ -26,6 +26,13 @@ class WeddingScheduleApp {
         
         // Setup event listeners after icons are set
         this.setupEventListeners();
+
+        // Ensure the title/subtitle reflect any current values on load
+        try {
+            this.updateScheduleTitle();
+        } catch (e) {
+            console.warn('Unable to initialize schedule title:', e);
+        }
     }
 
     // Helper function to replace button text with custom icons
@@ -106,6 +113,8 @@ class WeddingScheduleApp {
         document.getElementById('settings-bride-ready-time').addEventListener('input', () => {
             this.positionTouchupBlocks();
         });
+
+        // Live title updates removed; title updates only on Save Settings.
 
         addArtistBtn.addEventListener('click', () => {
             artistModal.style.display = 'block';
@@ -208,6 +217,7 @@ class WeddingScheduleApp {
                 e.target.style.display = 'none';
             }
         });
+        // Event-based title updates removed; title will update on Save Settings only.
     }
 
     renderTimeSlots() {
@@ -315,18 +325,40 @@ class WeddingScheduleApp {
         return column;
     }
 
+    // --- Title helpers ---
+    computeTitle(brideNameRaw) {
+        const name = (brideNameRaw || '').trim();
+        return name ? `${name}'s Wedding Schedule` : 'Your Wedding Schedule';
+    }
+
+    applyTitle(titleText) {
+        const titleEl = document.getElementById('schedule-title');
+        if (titleEl) titleEl.textContent = titleText;
+        try { document.title = titleText; } catch (_) {}
+    }
+
     updateScheduleTitle() {
-        const brideName = document.getElementById('settings-bride-name').value;
-        const weddingDate = document.getElementById('settings-wedding-date').value;
-        const location = document.getElementById('settings-location').value;
-        
+        const brideNameEl = document.getElementById('settings-bride-name');
+        const weddingDateEl = document.getElementById('settings-wedding-date');
+        const locationEl = document.getElementById('settings-location');
         const title = document.getElementById('schedule-title');
         const subtitle = document.getElementById('schedule-subtitle');
-        
-        const titleText = brideName.trim() ? `${brideName}'s Wedding Schedule` : 'Wedding Day Beauty Schedule';
-        title.textContent = titleText;
-        document.title = titleText;
-        
+
+        const brideName = brideNameEl ? brideNameEl.value : '';
+        const weddingDate = weddingDateEl ? weddingDateEl.value : '';
+        const location = locationEl ? locationEl.value : '';
+
+        const titleText = this.computeTitle(brideName);
+
+        if (!title) {
+            // Retry shortly in case DOM isn't ready yet
+            console.warn('schedule-title not found, retrying...');
+            setTimeout(() => this.updateScheduleTitle(), 50);
+            return;
+        }
+
+        this.applyTitle(titleText);
+
         let subtitleText = '';
         if (weddingDate) {
             const date = new Date(weddingDate);
@@ -336,12 +368,12 @@ class WeddingScheduleApp {
                 day: 'numeric' 
             });
         }
-        if (location.trim()) {
+        if (location && location.trim()) {
             if (subtitleText) subtitleText += '. ';
             subtitleText += `Location: ${location}`;
         }
         
-        subtitle.textContent = subtitleText;
+        if (subtitle) subtitle.textContent = subtitleText;
     }
     
     updateDurations() {
@@ -473,10 +505,19 @@ class WeddingScheduleApp {
         // Update schedule title
         this.updateScheduleTitle();
         
+        // Notify React components (Title) that settings were saved
+        try {
+            window.dispatchEvent(new CustomEvent('settings:saved', { detail: { brideName } }));
+        } catch (e) {
+            console.warn('Failed to dispatch settings:saved event', e);
+        }
+        
         // Reposition touchup blocks based on bride ready time
         console.log('About to call positionTouchupBlocks...');
         this.positionTouchupBlocks();
-        
+
+        // No event dispatch; title updates handled synchronously on save.
+
         // Close modal
         document.getElementById('settings-modal').style.display = 'none';
     }
@@ -1102,89 +1143,103 @@ class WeddingScheduleApp {
         loadModal.style.display = 'block';
     }
 
-    populateExistingSchedules() {
+    async populateExistingSchedules() {
         const schedulesList = document.getElementById('schedules-list');
-        const savedSchedules = this.getSavedSchedules();
-        
         schedulesList.innerHTML = '';
-        
-        if (savedSchedules.length === 0) {
-            schedulesList.innerHTML = '<p style="color: #666; font-style: italic;">No saved schedules yet.</p>';
-            return;
-        }
 
-        savedSchedules.forEach(schedule => {
-            const scheduleDiv = document.createElement('div');
-            scheduleDiv.className = 'schedule-item';
-            scheduleDiv.innerHTML = `
-                <div class="schedule-info">
-                    <div class="schedule-name">${schedule.name}</div>
-                    <div class="schedule-date">Saved: ${new Date(schedule.savedAt).toLocaleDateString()}</div>
-                </div>
-                <div class="schedule-actions">
-                    <button class="btn btn-danger btn-small delete-schedule-btn" data-schedule-id="${schedule.id}">Delete</button>
-                </div>
-            `;
-            
-            // Add event listener for the delete button
-            const deleteBtn = scheduleDiv.querySelector('.delete-schedule-btn');
-            deleteBtn.addEventListener('click', () => {
-                console.log('Delete button clicked for schedule:', schedule.id);
-                this.deleteSchedule(schedule.id);
+        try {
+            const res = await fetch('/api/schedules');
+            if (!res.ok) throw new Error('Failed to fetch schedules');
+            const savedSchedules = await res.json();
+
+            if (!Array.isArray(savedSchedules) || savedSchedules.length === 0) {
+                schedulesList.innerHTML = '<p style="color: #666; font-style: italic;">No saved schedules yet.</p>';
+                return;
+            }
+
+            savedSchedules.forEach((schedule) => {
+                const scheduleDiv = document.createElement('div');
+                scheduleDiv.className = 'schedule-item';
+                scheduleDiv.innerHTML = `
+                    <div class="schedule-info">
+                        <div class="schedule-name">${schedule.name}</div>
+                        <div class="schedule-date">Saved: ${new Date(schedule.savedAt).toLocaleDateString()}</div>
+                    </div>
+                    <div class="schedule-actions">
+                        <button class="btn btn-danger btn-small delete-schedule-btn" data-schedule-id="${schedule.id}">Delete</button>
+                    </div>
+                `;
+
+                const deleteBtn = scheduleDiv.querySelector('.delete-schedule-btn');
+                deleteBtn.addEventListener('click', () => {
+                    console.log('Delete button clicked for schedule:', schedule.id);
+                    this.deleteSchedule(schedule.id);
+                });
+
+                schedulesList.appendChild(scheduleDiv);
             });
-            
-            schedulesList.appendChild(scheduleDiv);
-        });
+        } catch (err) {
+            console.error('populateExistingSchedules error', err);
+            schedulesList.innerHTML = '<p style="color: #c00;">Failed to load schedules.</p>';
+        }
     }
 
-    populateLoadSchedules() {
+    async populateLoadSchedules() {
         const loadSchedulesList = document.getElementById('load-schedules-list');
         const noSchedulesDiv = document.getElementById('no-schedules');
-        const savedSchedules = this.getSavedSchedules();
         
         loadSchedulesList.innerHTML = '';
-        
-        if (savedSchedules.length === 0) {
-            noSchedulesDiv.style.display = 'block';
-            return;
-        }
 
-        noSchedulesDiv.style.display = 'none';
-        
-        savedSchedules.forEach(schedule => {
-            const scheduleDiv = document.createElement('div');
-            scheduleDiv.className = 'schedule-item';
-            scheduleDiv.innerHTML = `
-                <div class="schedule-info">
-                    <div class="schedule-name">${schedule.name}</div>
-                    <div class="schedule-date">Saved: ${new Date(schedule.savedAt).toLocaleDateString()}</div>
-                    <div class="schedule-date">Bride: ${schedule.data.brideName || 'Not set'}</div>
-                </div>
-                <div class="schedule-actions">
-                    <button class="btn btn-primary btn-small load-schedule-btn" data-schedule-id="${schedule.id}">Load</button>
-                    <button class="btn btn-danger btn-small delete-schedule-btn" data-schedule-id="${schedule.id}">Delete</button>
-                </div>
-            `;
-            
-            // Add event listeners for the buttons
-            const loadBtn = scheduleDiv.querySelector('.load-schedule-btn');
-            const deleteBtn = scheduleDiv.querySelector('.delete-schedule-btn');
-            
-            loadBtn.addEventListener('click', () => {
-                console.log('Load button clicked for schedule:', schedule.id);
-                this.loadSchedule(schedule.id);
+        try {
+            const res = await fetch('/api/schedules');
+            if (!res.ok) throw new Error('Failed to fetch schedules');
+            const savedSchedules = await res.json();
+
+            if (!Array.isArray(savedSchedules) || savedSchedules.length === 0) {
+                noSchedulesDiv.style.display = 'block';
+                return;
+            }
+
+            noSchedulesDiv.style.display = 'none';
+
+            savedSchedules.forEach((schedule) => {
+                const scheduleDiv = document.createElement('div');
+                scheduleDiv.className = 'schedule-item';
+                const brideName = (schedule?.data?.brideName) || 'Not set';
+                scheduleDiv.innerHTML = `
+                    <div class="schedule-info">
+                        <div class="schedule-name">${schedule.name}</div>
+                        <div class="schedule-date">Saved: ${new Date(schedule.savedAt).toLocaleDateString()}</div>
+                        <div class="schedule-date">Bride: ${brideName}</div>
+                    </div>
+                    <div class="schedule-actions">
+                        <button class="btn btn-primary btn-small load-schedule-btn" data-schedule-id="${schedule.id}">Load</button>
+                        <button class="btn btn-danger btn-small delete-schedule-btn" data-schedule-id="${schedule.id}">Delete</button>
+                    </div>
+                `;
+
+                const loadBtn = scheduleDiv.querySelector('.load-schedule-btn');
+                const deleteBtn = scheduleDiv.querySelector('.delete-schedule-btn');
+
+                loadBtn.addEventListener('click', () => {
+                    console.log('Load button clicked for schedule:', schedule.id);
+                    this.loadSchedule(schedule.id);
+                });
+
+                deleteBtn.addEventListener('click', () => {
+                    console.log('Delete button clicked for schedule:', schedule.id);
+                    this.deleteSchedule(schedule.id);
+                });
+
+                loadSchedulesList.appendChild(scheduleDiv);
             });
-            
-            deleteBtn.addEventListener('click', () => {
-                console.log('Delete button clicked for schedule:', schedule.id);
-                this.deleteSchedule(schedule.id);
-            });
-            
-            loadSchedulesList.appendChild(scheduleDiv);
-        });
+        } catch (err) {
+            console.error('populateLoadSchedules error', err);
+            noSchedulesDiv.style.display = 'block';
+        }
     }
 
-    saveSchedule() {
+    async saveSchedule() {
         const scheduleName = document.getElementById('save-schedule-name').value.trim();
         
         if (!scheduleName) {
@@ -1204,37 +1259,39 @@ class WeddingScheduleApp {
             brideHairTwoParts: document.getElementById('settings-bride-hair-two-parts').checked
         };
 
-        const schedule = {
-            id: Date.now().toString(),
-            name: scheduleName,
-            data: scheduleData,
-            savedAt: new Date().toISOString()
-        };
+        try {
+            const res = await fetch('/api/schedules', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: scheduleName, data: scheduleData })
+            });
+            if (!res.ok) throw new Error('Failed to save');
 
-        const savedSchedules = this.getSavedSchedules();
-        savedSchedules.push(schedule);
-        localStorage.setItem('weddingSchedules', JSON.stringify(savedSchedules));
+            alert(`Schedule "${scheduleName}" saved successfully!`);
+            document.getElementById('save-modal').style.display = 'none';
+            document.getElementById('save-schedule-name').value = '';
 
-        alert(`Schedule "${scheduleName}" saved successfully!`);
-        document.getElementById('save-modal').style.display = 'none';
-        document.getElementById('save-schedule-name').value = '';
+            // Refresh lists
+            this.populateExistingSchedules();
+            this.populateLoadSchedules();
+        } catch (err) {
+            console.error('saveSchedule error', err);
+            alert('Failed to save schedule.');
+        }
     }
 
-    loadSchedule(scheduleId) {
+    async loadSchedule(scheduleId) {
         console.log('loadSchedule called with ID:', scheduleId);
-        const savedSchedules = this.getSavedSchedules();
-        console.log('Found saved schedules:', savedSchedules.length);
-        const schedule = savedSchedules.find(s => s.id === scheduleId);
-        
-        if (!schedule) {
-            console.error('Schedule not found for ID:', scheduleId);
-            alert('Schedule not found.');
-            return;
-        }
-        
-        console.log('Loading schedule:', schedule.name);
+        try {
+            const res = await fetch(`/api/schedules/${scheduleId}`);
+            if (!res.ok) {
+                alert('Schedule not found.');
+                return;
+            }
+            const schedule = await res.json();
+            console.log('Loading schedule:', schedule.name);
 
-        const data = schedule.data;
+            const data = schedule.data || {};
         
         // Restore data
         console.log('Restoring wedding details...');
@@ -1264,6 +1321,12 @@ class WeddingScheduleApp {
         console.log('Rebuilding schedule...');
         this.buildSchedule();
         this.updateScheduleTitle();
+        // Notify React components after loading a schedule as well
+        try {
+            window.dispatchEvent(new CustomEvent('settings:saved', { detail: { brideName: data.brideName || '' } }));
+        } catch (e) {
+            console.warn('Failed to dispatch settings:saved event on load', e);
+        }
         console.log('Schedule rebuilt');
         
         // Restore assignments
@@ -1279,6 +1342,10 @@ class WeddingScheduleApp {
 
         document.getElementById('load-modal').style.display = 'none';
         alert(`Schedule "${schedule.name}" loaded successfully!`);
+        } catch (err) {
+            console.error('loadSchedule error', err);
+            alert('Failed to load schedule.');
+        }
     }
 
     restoreAssignments(assignments) {
@@ -1369,25 +1436,34 @@ class WeddingScheduleApp {
         }, 100);
     }
 
-    deleteSchedule(scheduleId) {
+    async deleteSchedule(scheduleId) {
         if (!confirm('Are you sure you want to delete this schedule?')) {
             return;
         }
 
-        const savedSchedules = this.getSavedSchedules();
-        const filteredSchedules = savedSchedules.filter(s => s.id !== scheduleId);
-        localStorage.setItem('weddingSchedules', JSON.stringify(filteredSchedules));
-        
-        // Refresh the lists
-        this.populateExistingSchedules();
-        this.populateLoadSchedules();
-        
-        alert('Schedule deleted successfully!');
+        try {
+            const res = await fetch(`/api/schedules/${scheduleId}`, { method: 'DELETE' });
+            if (!res.ok) throw new Error('Failed to delete');
+
+            // Refresh the lists
+            this.populateExistingSchedules();
+            this.populateLoadSchedules();
+
+            alert('Schedule deleted successfully!');
+        } catch (err) {
+            console.error('deleteSchedule error', err);
+            alert('Failed to delete schedule.');
+        }
     }
 
-    getSavedSchedules() {
-        const saved = localStorage.getItem('weddingSchedules');
-        return saved ? JSON.parse(saved) : [];
+    async getSavedSchedules() {
+        try {
+            const res = await fetch('/api/schedules');
+            if (!res.ok) return [];
+            return await res.json();
+        } catch (_) {
+            return [];
+        }
     }
 }
 

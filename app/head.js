@@ -1,7 +1,7 @@
 export default function Head() {
   return (
     <>
-      <title>Wedding Day Beauty Schedule</title>
+      {/* Title is managed dynamically at runtime via public/script.js */}
       <meta charSet="UTF-8" />
       <meta name="viewport" content="width=device-width, initial-scale=1" />
       <link rel="icon" href="/images/FFlogo.jpg" />
