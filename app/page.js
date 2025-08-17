@@ -1,3 +1,5 @@
+"use client";
+
 import BootstrapClient from './components/BootstrapClient';
 import WeddingScheduleApp from './components/WeddingScheduleApp';
 

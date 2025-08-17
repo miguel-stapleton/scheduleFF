@@ -12,7 +12,10 @@ export default function Header({
   onExport, 
   onSave, 
   onLoad, 
-  getSavedSchedules 
+  getSavedSchedules,
+  onDeleteSchedule,
+  onCropSchedule,
+  onUndo 
 }) {
   const [showLoadMenu, setShowLoadMenu] = useState(false);
   const [savedSchedules, setSavedSchedules] = useState([]);
@@ -33,8 +36,8 @@ export default function Header({
     }
   };
 
-  const handleLoad = (scheduleName) => {
-    onLoad(scheduleName);
+  const handleLoad = (scheduleId) => {
+    onLoad(scheduleId);
     setShowLoadMenu(false);
   };
 
@@ -54,17 +57,42 @@ export default function Header({
     setShowLoadMenu(!showLoadMenu);
   };
 
+  const handleLoadSchedule = (scheduleId) => {
+    onLoad(scheduleId);
+    setShowLoadMenu(false);
+  };
+
+  const handleDeleteClick = async (e, scheduleId) => {
+    e.stopPropagation();
+    const ok = typeof window !== 'undefined' ? confirm('Delete this schedule? This cannot be undone.') : true;
+    if (!ok) return;
+    try {
+      await onDeleteSchedule(scheduleId);
+      // Optimistically update list without closing the menu
+      setSavedSchedules((prev) => prev.filter((s) => s.id !== scheduleId));
+    } catch (err) {
+      alert(err?.message || 'Failed to delete schedule');
+    }
+  };
+
   return (
     <header>
       <div className="header-top">
         <div className="header-right">
-          <button 
-            className="btn btn-settings"
-            onClick={onOpenSettingsModal}
-          >
-            Settings
-          </button>
-          <div className="schedule-actions">
+          <div className="header-top-row">
+            <button 
+              className="btn btn-settings"
+              onClick={onOpenSettingsModal}
+            >
+              Settings
+            </button>
+            <button 
+              className="btn btn-icon-small has-icon" 
+              title="Undo"
+              onClick={onUndo}
+            >
+              <img src="/images/undo.png" alt="Undo" />
+            </button>
             <button 
               className="btn btn-icon-small has-icon" 
               title="Save Schedule"
@@ -82,24 +110,44 @@ export default function Header({
               </button>
               {showLoadMenu && (
                 <div className="dropdown-menu">
-                  {isLoadingSaved && (
-                    <div className="dropdown-item" aria-disabled>Loading...</div>
+                  {savedSchedules.length === 0 ? (
+                    <div className="dropdown-item disabled">No saved schedules</div>
+                  ) : (
+                    savedSchedules.map((schedule, index) => (
+                      <div 
+                        key={index} 
+                        className="dropdown-item"
+                      >
+                        <span 
+                          className="dropdown-item-name"
+                          onClick={() => handleLoadSchedule(schedule.id)}
+                        >
+                          {schedule.name || `Schedule ${index + 1}`}
+                        </span>
+                        <button 
+                          className="dropdown-item-delete"
+                          title="Delete"
+                          onClick={(e) => handleDeleteClick(e, schedule.id)}
+                          aria-label={`Delete ${schedule.name || `Schedule ${index + 1}`}`}
+                          style={{ marginLeft: 8 }}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))
                   )}
-                  {!isLoadingSaved && savedSchedules.length === 0 && (
-                    <div className="dropdown-item" aria-disabled>No saved schedules</div>
-                  )}
-                  {!isLoadingSaved && savedSchedules.length > 0 && savedSchedules.map((item) => (
-                    <button
-                      key={item.id}
-                      className="dropdown-item"
-                      onClick={() => handleLoad(item.id)}
-                    >
-                      {item.name || item?.data?.brideName || new Date(item.savedAt).toLocaleString()}
-                    </button>
-                  ))}
                 </div>
               )}
             </div>
+          </div>
+          <div className="header-bottom-row">
+            <button 
+              className="btn btn-icon-small has-icon" 
+              title="Crop Schedule"
+              onClick={onCropSchedule}
+            >
+              <img src="/images/crop.jpg" alt="Crop Schedule" />
+            </button>
           </div>
         </div>
       </div>

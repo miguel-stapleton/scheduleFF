@@ -4,8 +4,7 @@ import { useState, useEffect } from 'react';
 export default function GuestModal({ onClose, onAddGuest }) {
   const [formData, setFormData] = useState({
     name: '',
-    services: [],
-    color: '#ff6b6b'
+    services: []
   });
 
   const handleInputChange = (e) => {
@@ -29,7 +28,7 @@ export default function GuestModal({ onClose, onAddGuest }) {
     e.preventDefault();
     if (formData.name.trim() && formData.services.length > 0) {
       onAddGuest(formData);
-      setFormData({ name: '', services: [], color: '#ff6b6b' });
+      setFormData({ name: '', services: [] });
     }
   };
 
@@ -90,23 +89,6 @@ export default function GuestModal({ onClose, onAddGuest }) {
                   />
                   Hair Styling
                 </label>
-              </div>
-            </div>
-            
-            <div className="form-group">
-              <label htmlFor="guest-color">Guest Color:</label>
-              <div className="color-input-group">
-                <input
-                  type="color"
-                  id="guest-color"
-                  name="color"
-                  value={formData.color}
-                  onChange={handleInputChange}
-                />
-                <div 
-                  className="color-swatch" 
-                  style={{ backgroundColor: formData.color }}
-                ></div>
               </div>
             </div>
             

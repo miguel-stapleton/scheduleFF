@@ -8,6 +8,14 @@ export default function ScheduleGrid({ timeSlots, artists, clients, onUpdateClie
   const [panelHeight, setPanelHeight] = useState(200);
   const gridRef = useRef(null);
   const unscheduledClientsPanelRef = useRef(null);
+  // Touch DnD state
+  const [isTouchDragging, setIsTouchDragging] = useState(false);
+  const touchDraggedClientRef = useRef(null);
+  const longPressTimerRef = useRef(null);
+  const touchStartPosRef = useRef({ x: 0, y: 0 });
+  const touchLastPosRef = useRef({ x: 0, y: 0 });
+  const ignoreNextClickRef = useRef(false);
+  const isTouchDevice = typeof window !== 'undefined' && (('ontouchstart' in window) || (navigator.maxTouchPoints > 0));
 
   // Calculate time slot height (assuming each slot is 15 minutes)
   const timeSlotHeight = 30; // pixels per 15-minute slot
@@ -37,9 +45,18 @@ export default function ScheduleGrid({ timeSlots, artists, clients, onUpdateClie
     e.dataTransfer.dropEffect = 'move';
   }, []);
 
+  // Save to unified history before drag operations
+  const saveToHistory = useCallback(() => {
+    // This will be passed down from parent component
+    if (onUpdateClients.saveToHistory) {
+      onUpdateClients.saveToHistory('dragBlock', 'Moved block');
+    }
+  }, [onUpdateClients]);
+
   // Handle drop
   const handleDrop = useCallback((e, artistIndex, timeSlotIndex) => {
     e.preventDefault();
+    saveToHistory();
     
     if (!draggedClient) return;
 
@@ -55,9 +72,119 @@ export default function ScheduleGrid({ timeSlots, artists, clients, onUpdateClie
       return client;
     });
 
-    onUpdateClients(updatedClients);
+    onUpdateClients.setClients(updatedClients);
     setDraggedClient(null);
   }, [draggedClient, clients, timeSlots, onUpdateClients]);
+
+  // ----- Touch DnD helpers -----
+  const clamp = useCallback((n, min, max) => Math.max(min, Math.min(max, n)), []);
+
+  const findArtistIndexAtPoint = useCallback((x, y) => {
+    if (!gridRef.current) return -1;
+    const el = document.elementFromPoint(x, y);
+    if (!el) return -1;
+    const columns = Array.from(gridRef.current.querySelectorAll('.artist-column'));
+    return columns.findIndex(col => col.contains(el));
+  }, []);
+
+  const findTimeIndexAtPoint = useCallback((x, y, artistIndex) => {
+    if (!gridRef.current) return -1;
+    const columns = Array.from(gridRef.current.querySelectorAll('.artist-column'));
+    const column = columns[artistIndex];
+    if (!column) return -1;
+    const schedule = column.querySelector('.artist-schedule');
+    if (!schedule) return -1;
+    const rect = schedule.getBoundingClientRect();
+    const yRel = y - rect.top;
+    const idx = Math.floor(yRel / timeSlotHeight);
+    return clamp(idx, 0, timeSlots.length - 1);
+  }, [clamp, timeSlotHeight, timeSlots.length]);
+
+  const startTouchDrag = useCallback((client) => {
+    setIsTouchDragging(true);
+    touchDraggedClientRef.current = client;
+  }, []);
+
+  const handleTouchStart = useCallback((e, client) => {
+    if (!isTouchDevice) return;
+    if (!e.touches || e.touches.length === 0) return;
+    const t = e.touches[0];
+    touchStartPosRef.current = { x: t.clientX, y: t.clientY };
+    touchLastPosRef.current = { x: t.clientX, y: t.clientY };
+    touchDraggedClientRef.current = client;
+    // Record offset from touch point to block's top-left so movement is relative
+    const rect = e.currentTarget.getBoundingClientRect();
+    setDragOffset({ x: t.clientX - rect.left, y: t.clientY - rect.top });
+    // Long-press to avoid interfering with scroll/tap
+    longPressTimerRef.current = setTimeout(() => {
+      startTouchDrag(client);
+    }, 200);
+  }, [isTouchDevice, startTouchDrag]);
+
+  const handleTouchMove = useCallback((e) => {
+    if (!isTouchDevice) return;
+    if (!e.touches || e.touches.length === 0) return;
+    const t = e.touches[0];
+    touchLastPosRef.current = { x: t.clientX, y: t.clientY };
+    const dx = Math.abs(t.clientX - touchStartPosRef.current.x);
+    const dy = Math.abs(t.clientY - touchStartPosRef.current.y);
+    // If user scrolls before long-press, cancel drag start
+    if (!isTouchDragging && (dx > 10 || dy > 10)) {
+      if (longPressTimerRef.current) {
+        clearTimeout(longPressTimerRef.current);
+        longPressTimerRef.current = null;
+      }
+      return; // Allow scroll
+    }
+    if (isTouchDragging) {
+      // Prevent page scroll while dragging
+      try { e.preventDefault(); } catch {}
+    }
+  }, [isTouchDevice, isTouchDragging]);
+
+  const handleTouchEnd = useCallback((e) => {
+    if (!isTouchDevice) return;
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+    if (!isTouchDragging) {
+      // Not a drag; allow the click handler to open edit modal
+      touchDraggedClientRef.current = null;
+      return;
+    }
+    // Commit drop
+    const { x, y } = touchLastPosRef.current;
+    const artistIndex = findArtistIndexAtPoint(x, y);
+    if (artistIndex === -1) {
+      // No valid drop target
+      setIsTouchDragging(false);
+      touchDraggedClientRef.current = null;
+      return;
+    }
+    // Adjust Y by the recorded touch-to-block offset so drop is relative
+    const timeSlotIndex = findTimeIndexAtPoint(x, y - dragOffset.y, artistIndex);
+    const dragged = touchDraggedClientRef.current;
+    if (dragged && timeSlotIndex >= 0) {
+      const updatedClients = clients.map(client => {
+        if (client.id === dragged.id) {
+          return {
+            ...client,
+            artistIndex,
+            timeSlotIndex,
+            startTime: timeSlots[timeSlotIndex]
+          };
+        }
+        return client;
+      });
+      onUpdateClients.setClients(updatedClients);
+      // Avoid triggering click after drag
+      ignoreNextClickRef.current = true;
+      setTimeout(() => { ignoreNextClickRef.current = false; }, 0);
+    }
+    setIsTouchDragging(false);
+    touchDraggedClientRef.current = null;
+  }, [clients, dragOffset.y, findArtistIndexAtPoint, findTimeIndexAtPoint, isTouchDevice, onUpdateClients, timeSlots]);
 
   // Container-level drag handlers so tall blocks don't block underlying slots
   const handleContainerDragOver = useCallback((e) => {
@@ -69,14 +196,15 @@ export default function ScheduleGrid({ timeSlots, artists, clients, onUpdateClie
     e.preventDefault();
     if (!draggedClient) return;
     const rect = e.currentTarget.getBoundingClientRect();
-    let offsetY = e.clientY - rect.top;
+    // Use relative offset so the block's top remains offset by the same distance it was grabbed
+    let offsetY = e.clientY - rect.top - dragOffset.y;
     if (Number.isNaN(offsetY)) offsetY = 0;
     let index = Math.floor(offsetY / timeSlotHeight);
     // Clamp to valid range
     index = Math.max(0, Math.min(timeSlots.length - 1, index));
     // Reuse existing drop logic
     handleDrop(e, artistIndex, index);
-  }, [draggedClient, timeSlotHeight, timeSlots, handleDrop]);
+  }, [draggedClient, dragOffset.y, timeSlotHeight, timeSlots, handleDrop]);
 
   // Get client blocks positioned in the grid
   const getPositionedClients = useCallback(() => {
@@ -146,17 +274,6 @@ export default function ScheduleGrid({ timeSlots, artists, clients, onUpdateClie
     return `${formatTime(startHour, startMinute)}-${formatTime(endHour, endMinute)}`;
   }, [durations, timeSlots]);
 
-  // Remove client from schedule
-  const removeClientFromSchedule = useCallback((clientId) => {
-    const updatedClients = clients.map(client => {
-      if (client.id === clientId) {
-        const { artistIndex, timeSlotIndex, startTime, ...clientWithoutPosition } = client;
-        return clientWithoutPosition;
-      }
-      return client;
-    });
-    onUpdateClients(updatedClients);
-  }, [clients, onUpdateClients]);
 
   const handleResizeStart = useCallback((e) => {
     console.log('Drag started');
@@ -252,7 +369,7 @@ export default function ScheduleGrid({ timeSlots, artists, clients, onUpdateClie
 
     if (hasChanges) {
       console.log('Updating clients with auto-positioned blocks');
-      onUpdateClients(updatedClients);
+      onUpdateClients.setClients(updatedClients);
     }
   }, [clients, timeSlots, artists, onUpdateClients]);
 
@@ -320,8 +437,8 @@ export default function ScheduleGrid({ timeSlots, artists, clients, onUpdateClie
                 >
                   {/* Render client blocks that start at this time slot */}
                   {getPositionedClients()
-                    .filter(client => 
-                      client.artistIndex === artistIndex && 
+                    .filter(client =>
+                      client.artistIndex === artistIndex &&
                       client.timeSlotIndex === timeSlotIndex
                     )
                     .map(client => {
@@ -340,17 +457,27 @@ export default function ScheduleGrid({ timeSlots, artists, clients, onUpdateClie
                           }}
                           draggable
                           onDragStart={(e) => handleDragStart(e, client)}
+                          onTouchStart={(e) => handleTouchStart(e, client)}
+                          onTouchMove={handleTouchMove}
+                          onTouchEnd={handleTouchEnd}
                           onDragOver={(e) => { e.preventDefault(); try { e.dataTransfer.dropEffect = 'move'; } catch {} }}
-                          onClick={() => onOpenEditBlockModal(client)}
+                          onClick={(e) => { if (ignoreNextClickRef.current) { e.preventDefault(); e.stopPropagation(); return; } onOpenEditBlockModal(client); }}
                           title={`${client.name} - ${client.service} (${client.duration || durations[client.type]?.[client.service] || 45} min)\nClick to edit`}
                         >
-                          <div className="client-info">
-                            <div className="client-name">{client.name}</div>
-                            <div className="client-service">{client.service}</div>
-                            <div className="client-duration">
-                              {getTimeRange(client)}
+                          {client.type === 'special' ? (
+                            <div className="client-inline">
+                              <div className="client-name">{client.name}</div>
+                              <div className="client-time-range">{getTimeRange(client)}</div>
                             </div>
-                          </div>
+                          ) : (
+                            <>
+                              <div className="client-title">
+                                <div className="client-name">{client.name}</div>
+                                <div className="client-service">{client.service}</div>
+                              </div>
+                              <div className="client-time-range">{getTimeRange(client)}</div>
+                            </>
+                          )}
                         </div>
                       );
                     })}
@@ -401,7 +528,10 @@ export default function ScheduleGrid({ timeSlots, artists, clients, onUpdateClie
                 style={{ backgroundColor: client.color }}
                 draggable
                 onDragStart={(e) => handleDragStart(e, client)}
-                onClick={() => onOpenEditBlockModal(client)}
+                onTouchStart={(e) => handleTouchStart(e, client)}
+                onTouchMove={handleTouchMove}
+                onTouchEnd={handleTouchEnd}
+                onClick={(e) => { if (ignoreNextClickRef.current) { e.preventDefault(); e.stopPropagation(); return; } onOpenEditBlockModal(client); }}
                 title={`${client.name} - ${client.service} (${client.duration || durations[client.type]?.[client.service] || 45} min)\nClick to edit or drag to schedule`}
               >
                 <div className="client-info">

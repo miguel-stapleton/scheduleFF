@@ -24,8 +24,12 @@ export default function SettingsModal({ onClose, onSave, currentSettings, durati
     ...durations
   });
 
+  const [originalFormData, setOriginalFormData] = useState({});
+  const [originalDurationsData, setOriginalDurationsData] = useState({});
+  const [showExitConfirm, setShowExitConfirm] = useState(false);
+
   useEffect(() => {
-    setFormData({
+    const initialFormData = {
       brideName: '',
       brideHairTwoParts: false,
       brideReadyTime: '16:00',
@@ -34,8 +38,11 @@ export default function SettingsModal({ onClose, onSave, currentSettings, durati
       timeStartsAt: '06:00',
       timeFinishesAt: '18:00',
       ...currentSettings
-    });
+    };
+    setFormData(initialFormData);
+    setOriginalFormData(initialFormData);
     setDurationsData(durations);
+    setOriginalDurationsData(durations);
   }, [currentSettings, durations]);
 
   const handleInputChange = (e) => {
@@ -65,29 +72,60 @@ export default function SettingsModal({ onClose, onSave, currentSettings, durati
     onSave(formData);
   };
 
+  // Check if settings have been modified
+  const hasUnsavedChanges = () => {
+    return JSON.stringify(formData) !== JSON.stringify(originalFormData) ||
+           JSON.stringify(durationsData) !== JSON.stringify(originalDurationsData);
+  };
+
   const handleBackdropClick = (e) => {
     if (e.target === e.currentTarget) {
-      onClose();
+      if (hasUnsavedChanges()) {
+        setShowExitConfirm(true);
+      } else {
+        onClose();
+      }
     }
+  };
+
+  const handleExitWithoutSaving = () => {
+    setShowExitConfirm(false);
+    onClose();
+  };
+
+  const handleSaveAndExit = () => {
+    setShowExitConfirm(false);
+    onUpdateDurations(durationsData);
+    onSave(formData);
   };
 
   // Handle escape key
   useEffect(() => {
     const handleEscape = (e) => {
       if (e.key === 'Escape') {
-        onClose();
+        if (hasUnsavedChanges()) {
+          setShowExitConfirm(true);
+        } else {
+          onClose();
+        }
       }
     };
 
     document.addEventListener('keydown', handleEscape);
     return () => document.removeEventListener('keydown', handleEscape);
-  }, [onClose]);
+  }, [onClose, hasUnsavedChanges]);
 
   return (
     <div className="modal" onClick={handleBackdropClick}>
       <div className="modal-content">
         <div className="modal-body">
-          <span className="close" onClick={onClose}>&times;</span>
+          <span className="close" onClick={() => {
+            if (hasUnsavedChanges()) {
+              setShowExitConfirm(true);
+            } else {
+              onClose();
+            }
+          }}>&times;</span>
           <h2>Schedule Settings</h2>
           <form onSubmit={handleSubmit}>
           <div className="form-group">
@@ -139,27 +177,6 @@ export default function SettingsModal({ onClose, onSave, currentSettings, durati
             />
           </div>
           
-          <div className="form-group">
-            <label htmlFor="settings-time-starts-at">Time shows from:</label>
-            <input
-              type="time"
-              id="settings-time-starts-at"
-              name="timeStartsAt"
-              value={formData.timeStartsAt}
-              onChange={handleInputChange}
-            />
-          </div>
-          
-          <div className="form-group">
-            <label htmlFor="settings-time-finishes-at">Time shows until:</label>
-            <input
-              type="time"
-              id="settings-time-finishes-at"
-              name="timeFinishesAt"
-              value={formData.timeFinishesAt}
-              onChange={handleInputChange}
-            />
-          </div>
           
           <h3>Service Durations</h3>
           
@@ -259,6 +276,31 @@ export default function SettingsModal({ onClose, onSave, currentSettings, durati
           <button type="submit" className="btn btn-primary" onClick={handleSubmit}>Save Settings</button>
         </div>
       </div>
+      
+      {/* Exit confirmation dialog */}
+      {showExitConfirm && (
+        <div className="modal" style={{ backgroundColor: 'rgba(0,0,0,0.7)' }}>
+          <div className="modal-content" style={{ maxWidth: '400px', margin: '20% auto' }}>
+            <div className="modal-body">
+              <h3>Exit settings without saving?</h3>
+              <div className="modal-footer" style={{ marginTop: '20px', display: 'flex', gap: '10px', justifyContent: 'center' }}>
+                <button 
+                  className="btn btn-primary" 
+                  onClick={handleSaveAndExit}
+                >
+                  Save settings and close
+                </button>
+                <button 
+                  className="btn btn-secondary" 
+                  onClick={handleExitWithoutSaving}
+                >
+                  Exit without saving settings
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

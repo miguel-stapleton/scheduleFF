@@ -1,11 +1,37 @@
 "use client";
 import { useState, useEffect, useCallback } from 'react';
-import Header from './Header';
-import ScheduleGrid from './ScheduleGrid';
-import GuestModal from './GuestModal';
-import ArtistModal from './ArtistModal';
-import SettingsModal from './SettingsModal';
-import EditBlockModal from './EditBlockModal';
+import dynamic from 'next/dynamic';
+
+const Header = dynamic(() => import('./Header'), { ssr: false });
+const ScheduleGrid = dynamic(() => import('./ScheduleGrid'), { ssr: false });
+const GuestModal = dynamic(() => import('./GuestModal'), { ssr: false });
+const ArtistModal = dynamic(() => import('./ArtistModal'), { ssr: false });
+const SettingsModal = dynamic(() => import('./SettingsModal'), { ssr: false });
+const EditBlockModal = dynamic(() => import('./EditBlockModal'), { ssr: false });
+
+// Ordered palette for auto-assigned guest colors
+const GUEST_COLORS = [
+  '#CC00A0',
+  '#008741',
+  '#D65F2E',
+  '#0047A0',
+  '#BC061B',
+  '#0087CC',
+  '#9D3C0A',
+  '#6800BD',
+  '#009688',
+  '#A66F00',
+  '#13431B',
+  '#8A1779',
+  '#6C740B',
+  '#1D178A',
+  '#F0005E',
+  '#0A114A',
+  '#5B8255',
+  '#E27C00',
+  '#736849',
+  '#494E78',
+];
 
 export default function WeddingScheduleApp() {
   // Core state
@@ -15,6 +41,10 @@ export default function WeddingScheduleApp() {
   });
   
   const [clients, setClients] = useState([]);
+  const [nextGuestColorIndex, setNextGuestColorIndex] = useState(0);
+  
+  // Unified history system to maintain chronological order
+  const [actionHistory, setActionHistory] = useState([]);
   const [brideName, setBrideName] = useState('');
   const [durations, setDurations] = useState({
     bride: { makeup: 90, hair: 90, hairPart1: 60, hairPart2: 30 },
@@ -65,7 +95,52 @@ export default function WeddingScheduleApp() {
     return slots;
   }, []);
 
-  const [timeSlots, setTimeSlots] = useState(() => generateTimeSlots());
+  const [timeSlots, setTimeSlots] = useState([]);
+  
+  // Initialize time slots on client side only
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setTimeSlots(generateTimeSlots());
+    }
+  }, [generateTimeSlots]);
+
+  // Unified history system - saves complete state snapshots
+  const saveToHistory = useCallback((actionType, description = '') => {
+    const snapshot = {
+      timestamp: typeof window !== 'undefined' ? Date.now() : 0,
+      actionType,
+      description,
+      state: {
+        clients,
+        artists,
+        settings,
+        brideName
+      }
+    };
+    
+    setActionHistory(prev => {
+      const newHistory = [...prev, snapshot];
+      // Keep only last 15 actions to prevent memory issues
+      return newHistory.slice(-15);
+    });
+  }, [clients, artists, settings, brideName]);
+
+  // Undo functionality - restores previous state in chronological order
+  const undoLastChange = useCallback(() => {
+    if (actionHistory.length > 0) {
+      const lastAction = actionHistory[actionHistory.length - 1];
+      const previousState = lastAction.state;
+      
+      // Restore the complete previous state
+      setClients(previousState.clients);
+      setArtists(previousState.artists);
+      setSettings(previousState.settings);
+      setBrideName(previousState.brideName);
+      
+      // Remove the last action from history
+      setActionHistory(prev => prev.slice(0, -1));
+    }
+  }, [actionHistory]);
 
   // Update time slots when settings change
   useEffect(() => {
@@ -144,28 +219,45 @@ export default function WeddingScheduleApp() {
 
   // Guest management
   const addGuest = useCallback((guestData) => {
-    const baseId = Date.now();
+    saveToHistory('addGuest', `Added guest: ${guestData.name}`);
+    const baseId = typeof window !== 'undefined' ? Date.now() : 1000000;
     const guestBlocks = [];
+    const assignedColor = GUEST_COLORS[nextGuestColorIndex % GUEST_COLORS.length];
     
-    // Create a separate block for each service
-    guestData.services.forEach((service, index) => {
-      const block = {
-        id: `${baseId}-${service}`,
+    // Create makeup block if requested
+    if (guestData.services.includes('makeup')) {
+      guestBlocks.push({
+        id: `${baseId}-makeup`,
         name: guestData.name,
-        service: service,
+        service: 'makeup',
         type: 'guest',
-        color: guestData.color,
-        duration: durations.guest[service] || 45
-      };
-      guestBlocks.push(block);
-    });
+        color: assignedColor,
+        duration: durations.guest.makeup
+      });
+    }
+    
+    // Create hair block if requested
+    if (guestData.services.includes('hair')) {
+      guestBlocks.push({
+        id: `${baseId}-hair`,
+        name: guestData.name,
+        service: 'hair',
+        type: 'guest',
+        color: assignedColor,
+        duration: durations.guest.hair
+      });
+    }
     
     setClients(prev => [...prev, ...guestBlocks]);
+    setNextGuestColorIndex(prev => prev + 1);
     closeModal('guest');
-  }, [durations]);
+  }, [nextGuestColorIndex, saveToHistory, durations]);
 
   // Artist management
   const addArtist = useCallback((artistData) => {
+    saveToHistory('addArtist', `Added ${artistData.specialty} artist: ${artistData.name}`);
+    
+    // Update artist list
     setArtists(prev => ({
       ...prev,
       [artistData.specialty]: [
@@ -173,8 +265,27 @@ export default function WeddingScheduleApp() {
         { name: artistData.name, editable: false }
       ]
     }));
+    
+    // Update client artistIndex values to account for new column positions
+    setClients(prevClients => {
+      return prevClients.map(client => {
+        if (client.artistIndex !== undefined) {
+          // Get current artist arrays
+          const currentMakeupCount = artists.makeup.length;
+          const currentHairCount = artists.hair.length;
+          
+          // If adding a makeup artist and this client was assigned to hair artists
+          if (artistData.specialty === 'makeup' && client.artistIndex >= currentMakeupCount) {
+            // Shift hair artist indices by 1
+            return { ...client, artistIndex: client.artistIndex + 1 };
+          }
+        }
+        return client;
+      });
+    });
+    
     closeModal('artist');
-  }, []);
+  }, [saveToHistory, artists]);
 
   // Bride blocks management
   const createBrideBlocks = useCallback((name, overrideSettings = null) => {
@@ -183,7 +294,7 @@ export default function WeddingScheduleApp() {
     console.log('Creating bride blocks with durations:', durations);
     
     const brideBlocks = [];
-    const brideId = `bride-${Date.now()}`;
+    const brideId = `bride-${typeof window !== 'undefined' ? Date.now() : 2000000}`;
     
     // Makeup block
     brideBlocks.push({
@@ -240,7 +351,7 @@ export default function WeddingScheduleApp() {
     if (!brideReadyTime) return;
     
     const specialBlocks = [];
-    const baseId = Date.now();
+    const baseId = typeof window !== 'undefined' ? Date.now() : 3000000;
     
     // Create two "final touch-ups" blocks (bride yellow) - auto-positioned
     // Calculate start time: 15 minutes before bride ready time
@@ -298,6 +409,9 @@ export default function WeddingScheduleApp() {
 
   // Settings management
   const saveSettings = useCallback((newSettings) => {
+    // Save current state to history before applying new settings
+    saveToHistory('saveSettings', 'Saved settings changes');
+    
     console.log('saveSettings called with:', newSettings);
     const { brideName: newBrideName, ...otherSettings } = newSettings;
     console.log('Extracted brideName:', newBrideName);
@@ -343,15 +457,91 @@ export default function WeddingScheduleApp() {
     }
     
     closeModal('settings');
-  }, [clients, settings.brideReadyTime, createBrideBlocks]);
+  }, [clients, brideName, createBrideBlocks, saveToHistory]);
 
   // Ensure special blocks exist on mount and whenever bride ready time changes
   useEffect(() => {
     createSpecialBlocks(settings.brideReadyTime);
   }, [settings.brideReadyTime, createSpecialBlocks]);
 
+  // Validation check for mismatched service/artist assignments
+  const validateServiceAssignments = useCallback(() => {
+    const allArtists = [
+      ...artists.makeup.map((artist, index) => ({ ...artist, specialty: 'makeup', index })),
+      ...artists.hair.map((artist, index) => ({ ...artist, specialty: 'hair', index: index + artists.makeup.length }))
+    ];
+
+    console.log('Validation - All artists:', allArtists);
+
+    const mismatches = [];
+
+    clients.forEach(client => {
+      console.log('Checking client:', client);
+      const hasArtist = client.artistIndex !== undefined;
+      const isServiceBlock = client.type === 'guest' || client.type === 'bride';
+      if (!hasArtist || !isServiceBlock) return;
+
+      const assignedArtist = allArtists[client.artistIndex];
+      console.log('Assigned artist:', assignedArtist);
+
+      if (!assignedArtist) return;
+
+      // Determine service type from 'service' with legacy fallback to 'subtitle'
+      let rawService = (client.service || client.subtitle || '').toLowerCase();
+      let serviceType = '';
+      if (rawService.includes('make')) {
+        serviceType = 'makeup';
+      } else if (rawService.startsWith('hair') || rawService.includes('hair')) {
+        // Covers 'hair', 'hair-part1', 'hair-part2'
+        serviceType = 'hair';
+      }
+
+      console.log('Derived service type:', serviceType, 'Artist specialty:', assignedArtist.specialty);
+
+      if (!serviceType) return;
+
+      if (serviceType === 'makeup' && assignedArtist.specialty === 'hair') {
+        console.log('MISMATCH FOUND: Makeup under hair artist');
+        mismatches.push({
+          clientName: client.name,
+          service: 'makeup',
+          artistName: assignedArtist.name,
+          artistType: 'hairstylist'
+        });
+      } else if (serviceType === 'hair' && assignedArtist.specialty === 'makeup') {
+        console.log('MISMATCH FOUND: Hair under makeup artist');
+        mismatches.push({
+          clientName: client.name,
+          service: 'hair',
+          artistName: assignedArtist.name,
+          artistType: 'make-up artist'
+        });
+      }
+    });
+
+    return mismatches;
+  }, [clients, artists]);
+
   // Export functionality
   const exportSchedule = useCallback(async () => {
+    console.log('Export validation - Current clients:', clients);
+    console.log('Export validation - Current artists:', artists);
+    
+    // First, validate service assignments
+    const mismatches = validateServiceAssignments();
+    console.log('Export validation - Mismatches found:', mismatches);
+    
+    if (mismatches.length > 0) {
+      const mismatchMessages = mismatches.map(m => 
+        `${m.clientName}'s ${m.service} service is under ${m.artistName}, who is a ${m.artistType}!`
+      ).join('\n');
+      
+      const confirmExport = confirm(`${mismatchMessages}\n\nAre you sure you want to export?`);
+      if (!confirmExport) {
+        return;
+      }
+    }
+
     try {
       // Import dom-to-image dynamically
       const domtoimage = (await import('dom-to-image')).default;
@@ -399,7 +589,7 @@ export default function WeddingScheduleApp() {
       // Remove export class to restore buttons
       document.body.classList.remove('exporting');
     }
-  }, [brideName]);
+  }, [brideName, clients, artists, validateServiceAssignments]);
 
   // Save/Load functionality (MongoDB via API)
   const saveSchedule = useCallback(async (scheduleName) => {
@@ -450,6 +640,15 @@ export default function WeddingScheduleApp() {
       bride: { makeup: 90, hair: 90, hairPart1: 60, hairPart2: 30 },
       guest: { makeup: 45, hair: 45 },
     });
+
+    // Initialize next guest color index based on number of unique existing guests
+    const loadedClients = scheduleData.clients || [];
+    const uniqueGuestNames = new Set(
+      loadedClients
+        .filter(c => c.type === 'guest')
+        .map(c => c.name)
+    );
+    setNextGuestColorIndex(uniqueGuestNames.size);
   }, []);
 
   const getSavedSchedules = useCallback(async () => {
@@ -461,23 +660,102 @@ export default function WeddingScheduleApp() {
     return res.json();
   }, []);
 
-  // Click outside handler for modals
+  // Delete a saved schedule by ID
+  const deleteScheduleById = useCallback(async (scheduleId) => {
+    const res = await fetch(`/api/schedules/${scheduleId}`, { method: 'DELETE' });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to delete schedule');
+    }
+    return res.json().catch(() => ({}));
+  }, []);
+
+  // Crop schedule functionality
+  const cropSchedule = useCallback(() => {
+    // Save current state to history before cropping
+    saveToHistory('cropSchedule', 'Cropped schedule time range');
+    
+    // Find the earliest "Arrival + setup" block
+    const arrivalBlocks = clients.filter(c => c.type === 'special' && c.name === 'Arrival + setup' && c.artistIndex !== undefined);
+    
+    // Find the latest "Final touch-ups" block
+    const touchupBlocks = clients.filter(c => c.type === 'special' && c.name === 'Final touch-ups' && c.artistIndex !== undefined);
+    
+    if (arrivalBlocks.length === 0 || touchupBlocks.length === 0) {
+      alert('Cannot crop: Please ensure "Arrival + setup" and "Final touch-ups" blocks are scheduled first.');
+      return;
+    }
+    
+    // Calculate earliest arrival time
+    let earliestArrivalMinutes = Infinity;
+    arrivalBlocks.forEach(block => {
+      if (block.startTime) {
+        const [hours, minutes] = block.startTime.split(':').map(Number);
+        const totalMinutes = hours * 60 + minutes;
+        earliestArrivalMinutes = Math.min(earliestArrivalMinutes, totalMinutes);
+      }
+    });
+    
+    // Calculate latest touchup end time
+    let latestTouchupEndMinutes = -1;
+    touchupBlocks.forEach(block => {
+      if (block.endTime) {
+        const [hours, minutes] = block.endTime.split(':').map(Number);
+        const totalMinutes = hours * 60 + minutes;
+        latestTouchupEndMinutes = Math.max(latestTouchupEndMinutes, totalMinutes);
+      }
+    });
+    
+    if (earliestArrivalMinutes === Infinity || latestTouchupEndMinutes === -1) {
+      alert('Cannot crop: Unable to determine start and end times from scheduled blocks.');
+      return;
+    }
+    
+    // Calculate crop times: 15 minutes before arrival, 15 minutes after touchups
+    const cropStartMinutes = Math.max(0, earliestArrivalMinutes - 15);
+    const cropEndMinutes = latestTouchupEndMinutes + 15;
+    
+    // Convert back to time strings
+    const cropStartHours = Math.floor(cropStartMinutes / 60);
+    const cropStartMins = cropStartMinutes % 60;
+    const cropStartTime = `${cropStartHours.toString().padStart(2, '0')}:${cropStartMins.toString().padStart(2, '0')}`;
+    
+    const cropEndHours = Math.floor(cropEndMinutes / 60);
+    const cropEndMins = cropEndMinutes % 60;
+    const cropEndTime = `${cropEndHours.toString().padStart(2, '0')}:${cropEndMins.toString().padStart(2, '0')}`;
+    
+    // Update settings with new time range
+    setSettings(prev => ({
+      ...prev,
+      timeStartsAt: cropStartTime,
+      timeFinishesAt: cropEndTime
+    }));
+    
+    console.log(`Schedule cropped to: ${cropStartTime} - ${cropEndTime}`);
+  }, [clients, saveToHistory]);
+
+  // Click outside handler for modals (excluding settings modal which has its own handler)
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (event.target.classList.contains('modal')) {
+        // Don't auto-close settings modal - it has its own unsaved changes logic
+        if (modals.settings) {
+          return;
+        }
         closeAllModals();
       }
     };
 
     document.addEventListener('click', handleClickOutside);
     return () => document.removeEventListener('click', handleClickOutside);
-  }, []);
+  }, [modals.settings]);
 
   const deleteBlock = useCallback((blockToDelete) => {
+    saveToHistory('deleteBlock', `Deleted block: ${blockToDelete.name}`);
     const updatedClients = clients.filter(client => client.id !== blockToDelete.id);
     setClients(updatedClients);
     closeEditBlockModal();
-  }, [clients]);
+  }, [saveToHistory]);
 
   const saveEditedBlock = useCallback((editedBlock) => {
     const updatedClients = clients.map(client => 
@@ -510,13 +788,19 @@ export default function WeddingScheduleApp() {
         onSave={saveSchedule}
         onLoad={loadScheduleById}
         getSavedSchedules={getSavedSchedules}
+        onDeleteSchedule={deleteScheduleById}
+        onCropSchedule={cropSchedule}
+        onUndo={undoLastChange}
       />
       
       <ScheduleGrid
         timeSlots={timeSlots}
         artists={artists}
         clients={clients}
-        onUpdateClients={setClients}
+        onUpdateClients={{
+          setClients,
+          saveToHistory: saveToHistory
+        }}
         onUpdateArtists={setArtists}
         durations={durations}
         onOpenEditBlockModal={openEditBlockModal}

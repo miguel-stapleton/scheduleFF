@@ -119,8 +119,21 @@ header {
 
 .header-right {
     display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+}
+
+.header-top-row {
+    display: flex;
     align-items: center;
     gap: 20px;
+}
+
+.header-bottom-row {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    margin-top: 10px;
 }
 
 .app-logo {
@@ -130,6 +143,12 @@ header {
 }
 
 .schedule-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.schedule-actions-row {
     display: flex;
     gap: 10px;
 }
@@ -607,6 +626,14 @@ h1 {
 /* Special blocks (Arrival + setup, Final touch-ups) */
 .client-block.special {
     text-align: center;
+    /* Force inline layout for title and time */
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    white-space: nowrap;
+    flex-wrap: nowrap;
 }
 
 .client-block.special .client-info {
@@ -617,15 +644,42 @@ h1 {
     padding: 0 8px; /* keep side padding, remove vertical to help centering */
 }
 
-/* Hide extra lines so only the title shows, improving vertical centering */
-.client-block.special .client-service,
-.client-block.special .client-duration {
+/* Hide service line for special blocks */
+.client-block.special .client-service {
     display: none;
+}
+
+.client-block.special .client-title {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    margin: 0;
+    white-space: nowrap;
+    flex: 0 0 auto; /* don't grow to full width */
 }
 
 .client-block.special .client-name {
     margin: 0;
     line-height: 1.1;
+}
+
+.client-block.special .client-time-range {
+    margin-left: 4px;
+    font-size: 12px;
+    opacity: 0.95;
+    white-space: nowrap;
+    flex: 0 0 auto; /* size to content */
+}
+
+/* Inline container for special blocks (title + time on one line) */
+.client-inline {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    white-space: nowrap;
 }
 
 /* Small (15-minute) blocks: make text smaller and centered, keep time visible */
