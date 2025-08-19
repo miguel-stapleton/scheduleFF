@@ -1,20 +1,24 @@
 "use client";
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
-export default function EditBlockModal({ block, onClose, onSave, onDelete }) {
+export default function EditBlockModal({ block, onClose, onSave, onDelete, onDuplicate }) {
   const [formData, setFormData] = useState({
     name: '',
-    duration: 45
+    duration: 45,
+    color: '#cccccc'
   });
 
   useEffect(() => {
     if (block) {
       setFormData({
         name: block.name || '',
-        duration: block.duration || 45
+        duration: block.duration || 45,
+        color: block.color || '#cccccc'
       });
     }
   }, [block]);
+
+  const colorInputRef = useRef(null);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -30,13 +34,20 @@ export default function EditBlockModal({ block, onClose, onSave, onDelete }) {
       onSave({
         ...block,
         name: formData.name.trim(),
-        duration: formData.duration
+        duration: formData.duration,
+        color: formData.color
       });
     }
   };
 
   const handleDelete = () => {
     onDelete(block);
+  };
+
+  const handleDuplicate = () => {
+    if (onDuplicate) {
+      onDuplicate(block);
+    }
   };
 
   const handleBackdropClick = (e) => {
@@ -94,6 +105,29 @@ export default function EditBlockModal({ block, onClose, onSave, onDelete }) {
                 required
               />
             </div>
+
+            <div className="form-group">
+              <label htmlFor="edit-block-color">Colour:</label>
+              <div className="color-input-group">
+                <button
+                  type="button"
+                  className="color-swatch"
+                  style={{ backgroundColor: formData.color }}
+                  onClick={() => colorInputRef.current && colorInputRef.current.click()}
+                  aria-label="Choose colour"
+                  title="Choose colour"
+                />
+                <input
+                  type="color"
+                  id="edit-block-color"
+                  name="color"
+                  value={formData.color}
+                  onChange={handleInputChange}
+                  ref={colorInputRef}
+                  style={{ position: 'absolute', opacity: 0, width: 0, height: 0, pointerEvents: 'none' }}
+                />
+              </div>
+            </div>
             
             <div className="form-group">
               <label>Service:</label>
@@ -107,6 +141,9 @@ export default function EditBlockModal({ block, onClose, onSave, onDelete }) {
           </form>
         </div>
         <div className="modal-footer">
+          <button type="button" className="btn btn-warning" onClick={handleDuplicate}>
+            Duplicate
+          </button>
           <button type="button" className="btn btn-danger" onClick={handleDelete}>
             Delete
           </button>
@@ -121,3 +158,4 @@ export default function EditBlockModal({ block, onClose, onSave, onDelete }) {
     </div>
   );
 }
+

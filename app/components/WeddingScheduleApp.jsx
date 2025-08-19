@@ -253,6 +253,41 @@ export default function WeddingScheduleApp() {
     closeModal('guest');
   }, [nextGuestColorIndex, saveToHistory, durations]);
 
+  // Add multiple guests (comma-separated names), each with makeup and hair
+  const addMultipleGuests = useCallback((namesString) => {
+    const raw = namesString || '';
+    const names = raw.split(',').map(n => n.trim()).filter(Boolean);
+    if (names.length === 0) return;
+
+    saveToHistory('addMultipleGuests', `Added ${names.length} guests`);
+
+    const baseId = typeof window !== 'undefined' ? Date.now() : 1000000;
+    const newBlocks = [];
+    names.forEach((name, idx) => {
+      const color = GUEST_COLORS[(nextGuestColorIndex + idx) % GUEST_COLORS.length];
+      newBlocks.push({
+        id: `${baseId + idx}-makeup`,
+        name,
+        service: 'makeup',
+        type: 'guest',
+        color,
+        duration: durations.guest.makeup
+      });
+      newBlocks.push({
+        id: `${baseId + idx}-hair`,
+        name,
+        service: 'hair',
+        type: 'guest',
+        color,
+        duration: durations.guest.hair
+      });
+    });
+
+    setClients(prev => [...prev, ...newBlocks]);
+    setNextGuestColorIndex(prev => prev + names.length);
+    closeModal('guest');
+  }, [durations, nextGuestColorIndex, saveToHistory]);
+
   // Artist management
   const addArtist = useCallback((artistData) => {
     saveToHistory('addArtist', `Added ${artistData.specialty} artist: ${artistData.name}`);
@@ -711,9 +746,24 @@ export default function WeddingScheduleApp() {
       return;
     }
     
-    // Calculate crop times: 15 minutes before arrival, 15 minutes after touchups
+    // If there is any block AFTER the latest Final touch-ups, extend the lower limit
+    // to be 15 minutes after the end of the latest such block.
+    let latestPostTouchupEndMinutes = -1;
+    clients.forEach(block => {
+      if (block.artistIndex !== undefined && block.endTime) {
+        const [h, m] = block.endTime.split(':').map(Number);
+        const end = h * 60 + m;
+        if (end > latestTouchupEndMinutes) {
+          latestPostTouchupEndMinutes = Math.max(latestPostTouchupEndMinutes, end);
+        }
+      }
+    });
+
+    // Calculate crop times: 15 minutes before arrival, and 15 minutes after
+    // either the latest touch-ups or the latest post-touchup block (if any)
     const cropStartMinutes = Math.max(0, earliestArrivalMinutes - 15);
-    const cropEndMinutes = latestTouchupEndMinutes + 15;
+    const cropEndBase = latestPostTouchupEndMinutes !== -1 ? latestPostTouchupEndMinutes : latestTouchupEndMinutes;
+    const cropEndMinutes = cropEndBase + 15;
     
     // Convert back to time strings
     const cropStartHours = Math.floor(cropStartMinutes / 60);
@@ -765,6 +815,22 @@ export default function WeddingScheduleApp() {
     closeEditBlockModal();
   }, [clients]);
 
+  const duplicateBlock = useCallback((blockToDuplicate) => {
+    saveToHistory('duplicateBlock', `Duplicated block: ${blockToDuplicate.name}`);
+    const baseId = typeof window !== 'undefined' ? Date.now() : Math.floor(Math.random() * 1e9);
+    const newIdSuffix = blockToDuplicate.service ? `-${blockToDuplicate.service}` : '';
+    const newBlock = {
+      ...blockToDuplicate,
+      id: `${baseId}${newIdSuffix}`,
+      artistIndex: undefined,
+      timeSlotIndex: undefined,
+      startTime: undefined,
+      endTime: undefined,
+      autoPositioned: false
+    };
+    setClients(prev => [...prev, newBlock]);
+  }, [saveToHistory]);
+
   const openEditBlockModal = (block) => {
     setEditingBlock(block);
     openModal('editBlock');
@@ -810,6 +876,7 @@ export default function WeddingScheduleApp() {
         <GuestModal
           onClose={() => closeModal('guest')}
           onAddGuest={addGuest}
+          onAddMultipleGuests={addMultipleGuests}
         />
       )}
 
@@ -839,6 +906,7 @@ export default function WeddingScheduleApp() {
           onClose={closeEditBlockModal}
           onSave={saveEditedBlock}
           onDelete={deleteBlock}
+          onDuplicate={duplicateBlock}
         />
       )}
     </div>

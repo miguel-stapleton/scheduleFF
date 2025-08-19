@@ -1,11 +1,13 @@
 "use client";
 import { useState, useEffect } from 'react';
 
-export default function GuestModal({ onClose, onAddGuest }) {
+export default function GuestModal({ onClose, onAddGuest, onAddMultipleGuests }) {
   const [formData, setFormData] = useState({
     name: '',
     services: []
   });
+  const [activeTab, setActiveTab] = useState('single'); // 'single' | 'multiple'
+  const [multipleText, setMultipleText] = useState('');
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -29,6 +31,16 @@ export default function GuestModal({ onClose, onAddGuest }) {
     if (formData.name.trim() && formData.services.length > 0) {
       onAddGuest(formData);
       setFormData({ name: '', services: [] });
+    }
+  };
+
+  const handleMultipleSubmit = () => {
+    const raw = multipleText || '';
+    const names = raw.split(',').map(n => n.trim()).filter(Boolean);
+    if (names.length === 0) return;
+    if (typeof onAddMultipleGuests === 'function') {
+      onAddMultipleGuests(raw);
+      setMultipleText('');
     }
   };
 
@@ -56,50 +68,93 @@ export default function GuestModal({ onClose, onAddGuest }) {
         <div className="modal-body">
           <span className="close" onClick={onClose}>&times;</span>
           <h2>Add New Guest</h2>
-          <form onSubmit={handleSubmit}>
-            <div className="form-group">
-              <label htmlFor="guest-name">Guest Name:</label>
-              <input
-                type="text"
-                id="guest-name"
-                name="name"
-                value={formData.name}
-                onChange={handleInputChange}
-                required
-                autoFocus
-              />
-            </div>
-            
-            <div className="form-group">
-              <label>Services:</label>
-              <div className="checkbox-group">
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={formData.services.includes('makeup')}
-                    onChange={() => handleServiceChange('makeup')}
-                  />
-                  Makeup
-                </label>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={formData.services.includes('hair')}
-                    onChange={() => handleServiceChange('hair')}
-                  />
-                  Hair Styling
-                </label>
-              </div>
-            </div>
-            
-            <button 
-              type="submit" 
-              className="btn btn-primary"
-              disabled={!formData.name.trim() || formData.services.length === 0}
+
+          <div className="tabs" style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+            <button
+              type="button"
+              className={`btn ${activeTab === 'single' ? 'btn-primary' : ''}`}
+              onClick={() => setActiveTab('single')}
             >
-              Add Guest
+              Single guest
             </button>
-          </form>
+            <button
+              type="button"
+              className={`btn ${activeTab === 'multiple' ? 'btn-primary' : ''}`}
+              onClick={() => setActiveTab('multiple')}
+            >
+              Multiple guests
+            </button>
+          </div>
+
+          {activeTab === 'single' && (
+            <form onSubmit={handleSubmit}>
+              <div className="form-group">
+                <label htmlFor="guest-name">Guest Name:</label>
+                <input
+                  type="text"
+                  id="guest-name"
+                  name="name"
+                  value={formData.name}
+                  onChange={handleInputChange}
+                  required
+                  autoFocus
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Services:</label>
+                <div className="checkbox-group">
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={formData.services.includes('makeup')}
+                      onChange={() => handleServiceChange('makeup')}
+                    />
+                    Makeup
+                  </label>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={formData.services.includes('hair')}
+                      onChange={() => handleServiceChange('hair')}
+                    />
+                    Hair Styling
+                  </label>
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                className="btn btn-primary"
+                disabled={!formData.name.trim() || formData.services.length === 0}
+              >
+                Add Guest
+              </button>
+            </form>
+          )}
+
+          {activeTab === 'multiple' && (
+            <div>
+              <div className="form-group">
+                <label htmlFor="guest-names">Guest Names (comma-separated):</label>
+                <textarea
+                  id="guest-names"
+                  rows={3}
+                  value={multipleText}
+                  onChange={(e) => setMultipleText(e.target.value)}
+                  placeholder="e.g. Alice, Bob, Charlie"
+                />
+              </div>
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={!multipleText.trim()}
+                onClick={handleMultipleSubmit}
+              >
+                Add Guests
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>
