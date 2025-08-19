@@ -1,7 +1,7 @@
 "use client";
 import { useState, useCallback, useRef, useEffect } from 'react';
 
-export default function ScheduleGrid({ timeSlots, artists, clients, onUpdateClients, onUpdateArtists, durations, onOpenEditBlockModal }) {
+export default function ScheduleGrid({ timeSlots, artists, clients, onUpdateClients, onUpdateArtists, durations, onOpenEditBlockModal, onExtendEnd, onExtendStart }) {
   const [draggedClient, setDraggedClient] = useState(null);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [isDraggingPanel, setIsDraggingPanel] = useState(false);
@@ -66,7 +66,11 @@ export default function ScheduleGrid({ timeSlots, artists, clients, onUpdateClie
           ...client,
           artistIndex,
           timeSlotIndex,
-          startTime: timeSlots[timeSlotIndex]
+          startTime: timeSlots[timeSlotIndex],
+          // Mark as manually positioned to prevent auto-placement overrides
+          autoPositioned: false,
+          // Clear any fixed endTime (e.g., brideReadyTime) so duration drives the block end
+          endTime: undefined
         };
       }
       return client;
@@ -172,7 +176,9 @@ export default function ScheduleGrid({ timeSlots, artists, clients, onUpdateClie
             ...client,
             artistIndex,
             timeSlotIndex,
-            startTime: timeSlots[timeSlotIndex]
+            startTime: timeSlots[timeSlotIndex],
+            autoPositioned: false,
+            endTime: undefined
           };
         }
         return client;
@@ -377,8 +383,30 @@ export default function ScheduleGrid({ timeSlots, artists, clients, onUpdateClie
     <div className="schedule-container">
       {/* Time Column */}
       <div className="time-column">
-        <div className="time-header">
+        <div className="time-header" style={{ position: 'relative' }}>
           <img src="/images/clock.png" alt="Clock" />
+          <button
+            type="button"
+            onClick={() => onExtendStart && onExtendStart(15)}
+            title="Extend start time earlier by 15 minutes"
+            style={{
+              position: 'absolute',
+              right: 8,
+              top: '50%',
+              transform: 'translateY(-50%)',
+              width: 28,
+              height: 28,
+              borderRadius: 14,
+              border: '1px solid #ccc',
+              background: '#f8f8f8',
+              cursor: 'pointer',
+              lineHeight: '26px',
+              textAlign: 'center',
+              fontWeight: 600
+            }}
+          >
+            +
+          </button>
         </div>
         <div className="time-slots">
           {timeSlots.map((time, index) => (
@@ -386,6 +414,26 @@ export default function ScheduleGrid({ timeSlots, artists, clients, onUpdateClie
               {time}
             </div>
           ))}
+        </div>
+        <div style={{ padding: '4px 8px', borderTop: '1px solid #eee', display: 'flex', justifyContent: 'center' }}>
+          <button
+            type="button"
+            onClick={() => onExtendEnd && onExtendEnd(15)}
+            title="Extend end time by 15 minutes"
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: 14,
+              border: '1px solid #ccc',
+              background: '#f8f8f8',
+              cursor: 'pointer',
+              lineHeight: '26px',
+              textAlign: 'center',
+              fontWeight: 600
+            }}
+          >
+            +
+          </button>
         </div>
       </div>
 

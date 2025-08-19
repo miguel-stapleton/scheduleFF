@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import dynamic from 'next/dynamic';
 
 const Header = dynamic(() => import('./Header'), { ssr: false });
@@ -42,6 +42,8 @@ export default function WeddingScheduleApp() {
   
   const [clients, setClients] = useState([]);
   const [nextGuestColorIndex, setNextGuestColorIndex] = useState(0);
+  // Flag to suppress remap when restoring a snapshot (e.g., undo)
+  const isRestoringRef = useRef(false);
   
   // Unified history system to maintain chronological order
   const [actionHistory, setActionHistory] = useState([]);
@@ -131,7 +133,14 @@ export default function WeddingScheduleApp() {
       const lastAction = actionHistory[actionHistory.length - 1];
       const previousState = lastAction.state;
       
-      // Restore the complete previous state
+      // Restore the complete previous state without triggering remap side-effects
+      isRestoringRef.current = true;
+      // Set timeSlots directly for the restored settings to match client indices
+      const restoredSlots = generateTimeSlots(
+        previousState.settings?.timeStartsAt || '06:00',
+        previousState.settings?.timeFinishesAt || '18:00'
+      );
+      setTimeSlots(restoredSlots);
       setClients(previousState.clients);
       setArtists(previousState.artists);
       setSettings(previousState.settings);
@@ -146,60 +155,48 @@ export default function WeddingScheduleApp() {
   useEffect(() => {
     if (settings.timeStartsAt && settings.timeFinishesAt) {
       const newTimeSlots = generateTimeSlots(settings.timeStartsAt, settings.timeFinishesAt);
-      
-      // Preserve client positions by mapping to the nearest valid slot
-      // Prefer exact previous startTime when available; otherwise, derive from prior index.
-      setClients(prevClients => {
-        return prevClients.map(client => {
-          if (client.artistIndex !== undefined) {
-            // Determine previous start time string from either saved startTime or old index
-            const previousStartStr = client.startTime ?? (client.timeSlotIndex !== undefined ? timeSlots[client.timeSlotIndex] : undefined);
 
-            // Helper to clamp index within bounds
-            const clampIndex = (idx) => Math.max(0, Math.min(newTimeSlots.length - 1, idx));
+      // If we are restoring a snapshot (undo/load), just set slots and skip remap
+      if (isRestoringRef.current) {
+        setTimeSlots(newTimeSlots);
+        isRestoringRef.current = false;
+        return;
+      }
 
-            if (previousStartStr && newTimeSlots.length > 0) {
-              // Prefer exact match
-              const exactIdx = newTimeSlots.findIndex(slot => slot === previousStartStr);
-              if (exactIdx !== -1) {
-                return { ...client, timeSlotIndex: exactIdx, startTime: newTimeSlots[exactIdx] };
-              }
+      // If only extending the end, skip remap entirely to avoid churn.
+      if (
+        timeSlots.length > 0 &&
+        newTimeSlots.length >= timeSlots.length &&
+        newTimeSlots[0] === timeSlots[0] &&
+        newTimeSlots.slice(0, timeSlots.length).every((t, i) => t === timeSlots[i])
+      ) {
+        setTimeSlots(newTimeSlots);
+        return;
+      }
 
-              // Otherwise clamp to new range
-              const [ph, pm] = previousStartStr.split(':').map(Number);
-              if (!Number.isNaN(ph) && !Number.isNaN(pm)) {
-                const prevMinutes = ph * 60 + pm;
-                const [sh, sm] = newTimeSlots[0].split(':').map(Number);
-                const [eh, em] = newTimeSlots[newTimeSlots.length - 1].split(':').map(Number);
-                const startMinutes = sh * 60 + sm;
-                const endMinutes = eh * 60 + em;
+      // Compute deltaSlots between new and old starts; use it to shift indices.
+      const toMin = (s) => {
+        const [h, m] = (s || '00:00').split(':').map(Number);
+        return (h * 60) + m;
+      };
+      const oldFirst = timeSlots[0];
+      const newFirst = newTimeSlots[0];
 
-                let targetMinutes = prevMinutes;
-                if (prevMinutes < startMinutes) targetMinutes = startMinutes;
-                if (prevMinutes > endMinutes) targetMinutes = endMinutes;
+      // If we have no prior slots, just set and bail.
+      if (!oldFirst) {
+        setTimeSlots(newTimeSlots);
+        return;
+      }
 
-                const hourStr = String(Math.floor(targetMinutes / 60)).padStart(2, '0');
-                const minuteStr = String(targetMinutes % 60).padStart(2, '0');
-                const clampedStr = `${hourStr}:${minuteStr}`;
-                let idx = newTimeSlots.findIndex(t => t === clampedStr);
-                if (idx === -1) {
-                  const diff = targetMinutes - (startMinutes);
-                  idx = clampIndex(Math.round(diff / 15));
-                }
-                return { ...client, timeSlotIndex: idx, startTime: newTimeSlots[idx] };
-              }
-            }
+      const deltaSlots = Math.round((toMin(newFirst) - toMin(oldFirst)) / 15);
 
-            // Fallbacks: if we still have a previous index, clamp it; otherwise leave as-is
-            if (client.timeSlotIndex !== undefined && newTimeSlots.length > 0) {
-              const idx = clampIndex(client.timeSlotIndex);
-              return { ...client, timeSlotIndex: idx, startTime: newTimeSlots[idx] };
-            }
-          }
-          return client;
-        });
-      });
-      
+      // Shift all scheduled clients by -deltaSlots to preserve absolute time.
+      setClients(prevClients => prevClients.map(client => {
+        if (client.artistIndex === undefined || client.timeSlotIndex === undefined) return client;
+        const newIdx = Math.max(0, Math.min(newTimeSlots.length - 1, client.timeSlotIndex - deltaSlots));
+        return { ...client, timeSlotIndex: newIdx, startTime: newTimeSlots[newIdx] };
+      }));
+
       setTimeSlots(newTimeSlots);
     }
   }, [settings.timeStartsAt, settings.timeFinishesAt, generateTimeSlots]);
@@ -347,7 +344,7 @@ export default function WeddingScheduleApp() {
       console.log('Creating two hair blocks');
       brideBlocks.push({
         id: `${brideId}-hair-part1`,
-        name: `${name} - Hair Part I`,
+        name: name,
         service: 'hair-part1',
         type: 'bride',
         color: '#ffae00',
@@ -355,7 +352,7 @@ export default function WeddingScheduleApp() {
       });
       brideBlocks.push({
         id: `${brideId}-hair-part2`,
-        name: `${name} - Hair Part II`,
+        name: name,
         service: 'hair-part2',
         type: 'bride',
         color: '#ffae00',
@@ -483,10 +480,7 @@ export default function WeddingScheduleApp() {
       console.log('Updating existing bride block names');
       setClients(prev => prev.map(client => 
         client.type === 'bride' 
-          ? { ...client, name: client.service.includes('part') 
-              ? `${brideNameToUse} - ${client.service === 'hair-part1' ? 'Hair Part I' : client.service === 'hair-part2' ? 'Hair Part II' : client.service}`
-              : brideNameToUse 
-            }
+          ? { ...client, name: brideNameToUse }
           : client
       ));
     }
@@ -626,6 +620,54 @@ export default function WeddingScheduleApp() {
     }
   }, [brideName, clients, artists, validateServiceAssignments]);
 
+  // Manually extend the visible end time by one 15-minute slot
+  const extendVisibleEnd = useCallback((incrementMinutes = 15) => {
+    // Save to history before changing time range
+    saveToHistory('extendEnd', `Extended end time by +${incrementMinutes} minutes`);
+
+    const toMin = (s) => {
+      const [h, m] = (s || '00:00').split(':').map(Number);
+      return (h * 60) + m;
+    };
+    const toTime = (mins) => {
+      const h = Math.floor(mins / 60);
+      const m = mins % 60;
+      return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+    };
+
+    setSettings(prev => {
+      const currentEnd = toMin(prev.timeFinishesAt || '18:00');
+      const added = currentEnd + incrementMinutes;
+      // Snap to the next 15-min boundary so a single click always adds a slot
+      const snapped = Math.max(0, Math.ceil(added / 15) * 15);
+      return { ...prev, timeFinishesAt: toTime(snapped) };
+    });
+  }, [saveToHistory]);
+
+  // Manually extend the visible start time earlier by one 15-minute slot
+  const extendVisibleStart = useCallback((incrementMinutes = 15) => {
+    // Save to history before changing time range
+    saveToHistory('extendStart', `Extended start time earlier by -${incrementMinutes} minutes`);
+
+    const toMin = (s) => {
+      const [h, m] = (s || '00:00').split(':').map(Number);
+      return (h * 60) + m;
+    };
+    const toTime = (mins) => {
+      const h = Math.floor(mins / 60);
+      const m = mins % 60;
+      return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+    };
+
+    setSettings(prev => {
+      const currentStart = toMin(prev.timeStartsAt || '06:00');
+      const subtracted = Math.max(0, currentStart - incrementMinutes);
+      // Snap down to the previous 15-min boundary
+      const snapped = Math.floor(subtracted / 15) * 15;
+      return { ...prev, timeStartsAt: toTime(snapped) };
+    });
+  }, [saveToHistory]);
+
   // Save/Load functionality (MongoDB via API)
   const saveSchedule = useCallback(async (scheduleName) => {
     const scheduleData = {
@@ -655,7 +697,15 @@ export default function WeddingScheduleApp() {
     }
     const payload = await res.json();
     const scheduleData = payload?.data || {};
-    setClients(scheduleData.clients || []);
+    // Normalize clients (coerce legacy fields to numbers)
+    const normalizedClients = (scheduleData.clients || []).map((c) => {
+      const parsedDuration = typeof c.duration === 'string' ? parseInt(c.duration, 10) : c.duration;
+      const duration = Number.isFinite(parsedDuration) ? parsedDuration : c.duration;
+      const artistIndex = typeof c.artistIndex === 'string' ? parseInt(c.artistIndex, 10) : c.artistIndex;
+      const timeSlotIndex = typeof c.timeSlotIndex === 'string' ? parseInt(c.timeSlotIndex, 10) : c.timeSlotIndex;
+      return { ...c, duration, artistIndex, timeSlotIndex };
+    });
+    setClients(normalizedClients);
     setArtists(scheduleData.artists || {
       makeup: [{ name: 'Make-up Artist', editable: true }],
       hair: [{ name: 'Hairstylist', editable: true }],
@@ -671,10 +721,28 @@ export default function WeddingScheduleApp() {
     };
     const { touchupDuration, ...sanitizedSettings } = incomingSettings; // drop legacy field
     setSettings(sanitizedSettings);
-    setDurations(scheduleData.durations || {
+    const defaultDurations = {
       bride: { makeup: 90, hair: 90, hairPart1: 60, hairPart2: 30 },
       guest: { makeup: 45, hair: 45 },
-    });
+    };
+    const incomingDurations = scheduleData.durations || defaultDurations;
+    const normNum = (v, d) => {
+      const n = typeof v === 'string' ? parseInt(v, 10) : v;
+      return Number.isFinite(n) ? n : d;
+    };
+    const normalizedDurations = {
+      bride: {
+        makeup: normNum(incomingDurations?.bride?.makeup, defaultDurations.bride.makeup),
+        hair: normNum(incomingDurations?.bride?.hair, defaultDurations.bride.hair),
+        hairPart1: normNum(incomingDurations?.bride?.hairPart1, defaultDurations.bride.hairPart1),
+        hairPart2: normNum(incomingDurations?.bride?.hairPart2, defaultDurations.bride.hairPart2),
+      },
+      guest: {
+        makeup: normNum(incomingDurations?.guest?.makeup, defaultDurations.guest.makeup),
+        hair: normNum(incomingDurations?.guest?.hair, defaultDurations.guest.hair),
+      }
+    };
+    setDurations(normalizedDurations);
 
     // Initialize next guest color index based on number of unique existing guests
     const loadedClients = scheduleData.clients || [];
@@ -710,60 +778,69 @@ export default function WeddingScheduleApp() {
     // Save current state to history before cropping
     saveToHistory('cropSchedule', 'Cropped schedule time range');
     
-    // Find the earliest "Arrival + setup" block
-    const arrivalBlocks = clients.filter(c => c.type === 'special' && c.name === 'Arrival + setup' && c.artistIndex !== undefined);
+    // Crop is independent of brideReadyTime and touch-ups. We don't require
+    // specific special blocks to exist for cropping.
     
-    // Find the latest "Final touch-ups" block
-    const touchupBlocks = clients.filter(c => c.type === 'special' && c.name === 'Final touch-ups' && c.artistIndex !== undefined);
-    
-    if (arrivalBlocks.length === 0 || touchupBlocks.length === 0) {
-      alert('Cannot crop: Please ensure "Arrival + setup" and "Final touch-ups" blocks are scheduled first.');
-      return;
-    }
-    
-    // Calculate earliest arrival time
-    let earliestArrivalMinutes = Infinity;
-    arrivalBlocks.forEach(block => {
+    // Helpers to resolve minutes from block fields with fallbacks for legacy data
+    const resolveStartMinutes = (block) => {
       if (block.startTime) {
-        const [hours, minutes] = block.startTime.split(':').map(Number);
-        const totalMinutes = hours * 60 + minutes;
-        earliestArrivalMinutes = Math.min(earliestArrivalMinutes, totalMinutes);
+        const [h, m] = block.startTime.split(':').map(Number);
+        return h * 60 + m;
       }
-    });
-    
-    // Calculate latest touchup end time
-    let latestTouchupEndMinutes = -1;
-    touchupBlocks.forEach(block => {
+      if (block.timeSlotIndex !== undefined && timeSlots[block.timeSlotIndex]) {
+        const [h, m] = timeSlots[block.timeSlotIndex].split(':').map(Number);
+        return h * 60 + m;
+      }
+      return undefined;
+    };
+
+    const resolveEndMinutes = (block) => {
       if (block.endTime) {
-        const [hours, minutes] = block.endTime.split(':').map(Number);
-        const totalMinutes = hours * 60 + minutes;
-        latestTouchupEndMinutes = Math.max(latestTouchupEndMinutes, totalMinutes);
+        const [h, m] = block.endTime.split(':').map(Number);
+        return h * 60 + m;
       }
-    });
-    
-    if (earliestArrivalMinutes === Infinity || latestTouchupEndMinutes === -1) {
-      alert('Cannot crop: Unable to determine start and end times from scheduled blocks.');
+      const start = resolveStartMinutes(block);
+      if (start !== undefined) {
+        const dur = typeof block.duration === 'number' ? block.duration : parseInt(block.duration, 10);
+        if (Number.isFinite(dur)) {
+          return start + dur;
+        }
+      }
+      return undefined;
+    };
+
+    // Collect scheduled blocks (assigned to artists)
+    const scheduledBlocks = clients.filter(c => c.artistIndex !== undefined);
+    if (scheduledBlocks.length === 0) {
+      alert('Cannot crop: No scheduled blocks found.');
       return;
     }
-    
-    // If there is any block AFTER the latest Final touch-ups, extend the lower limit
-    // to be 15 minutes after the end of the latest such block.
-    let latestPostTouchupEndMinutes = -1;
-    clients.forEach(block => {
-      if (block.artistIndex !== undefined && block.endTime) {
-        const [h, m] = block.endTime.split(':').map(Number);
-        const end = h * 60 + m;
-        if (end > latestTouchupEndMinutes) {
-          latestPostTouchupEndMinutes = Math.max(latestPostTouchupEndMinutes, end);
-        }
+
+    // Find earliest start and latest end across ALL scheduled blocks
+    let earliestStartMinutes = Infinity;
+    let latestEndMinutes = -1;
+    scheduledBlocks.forEach(block => {
+      const start = resolveStartMinutes(block);
+      if (start !== undefined) {
+        earliestStartMinutes = Math.min(earliestStartMinutes, start);
+      }
+      const end = resolveEndMinutes(block);
+      if (end !== undefined) {
+        latestEndMinutes = Math.max(latestEndMinutes, end);
+      } else if (start !== undefined) {
+        // If end cannot be resolved, at least include the start
+        latestEndMinutes = Math.max(latestEndMinutes, start);
       }
     });
 
-    // Calculate crop times: 15 minutes before arrival, and 15 minutes after
-    // either the latest touch-ups or the latest post-touchup block (if any)
-    const cropStartMinutes = Math.max(0, earliestArrivalMinutes - 15);
-    const cropEndBase = latestPostTouchupEndMinutes !== -1 ? latestPostTouchupEndMinutes : latestTouchupEndMinutes;
-    const cropEndMinutes = cropEndBase + 15;
+    if (earliestStartMinutes === Infinity || latestEndMinutes === -1) {
+      alert('Cannot crop: Unable to determine start/end times from scheduled blocks.');
+      return;
+    }
+
+    // Compute crop range per simplified rule
+    const cropStartMinutes = Math.max(0, earliestStartMinutes - 15);
+    const cropEndMinutes = latestEndMinutes + 15;
     
     // Convert back to time strings
     const cropStartHours = Math.floor(cropStartMinutes / 60);
@@ -781,8 +858,8 @@ export default function WeddingScheduleApp() {
       timeFinishesAt: cropEndTime
     }));
     
-    console.log(`Schedule cropped to: ${cropStartTime} - ${cropEndTime}`);
-  }, [clients, saveToHistory]);
+    console.log(`[Crop] start=${cropStartTime} end=${cropEndTime} (first-15 / last+15)`);
+  }, [clients, timeSlots, saveToHistory]);
 
   // Click outside handler for modals (excluding settings modal which has its own handler)
   useEffect(() => {
@@ -870,6 +947,8 @@ export default function WeddingScheduleApp() {
         onUpdateArtists={setArtists}
         durations={durations}
         onOpenEditBlockModal={openEditBlockModal}
+        onExtendEnd={extendVisibleEnd}
+        onExtendStart={extendVisibleStart}
       />
 
       {modals.guest && (
