@@ -1110,6 +1110,11 @@ select:focus {
     display: none !important;
 }
 
+/* Hide the "+" controls in the time column during export */
+.exporting .time-column button {
+    display: none !important;
+}
+
 .exporting .container {
     padding-top: 30px; /* Reduce top padding when buttons are hidden */
 }
