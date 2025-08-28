@@ -1151,3 +1151,26 @@ select:focus {
     text-transform: uppercase !important;
     color: white !important;
 }
+
+/* Device-specific hooks */
+html.device-ios body {
+    /* Account for iOS home indicator when app is installed / fullscreen */
+    padding-bottom: max(20px, env(safe-area-inset-bottom));
+}
+
+html.device-ios .unscheduled-clients {
+    /* Ensure bottom panel clears the iOS safe area */
+    padding-bottom: calc(20px + env(safe-area-inset-bottom));
+}
+
+/* Optional: platform targeting selectors for future tweaks */
+html.device-android .platform-android-only { display: initial; }
+html.device-ios .platform-ios-only { display: initial; }
+html.device-desktop .platform-desktop-only { display: initial; }
+
+/* Hide platform-gated elements by default */
+.platform-android-only,
+.platform-ios-only,
+.platform-desktop-only {
+    display: none;
+}
