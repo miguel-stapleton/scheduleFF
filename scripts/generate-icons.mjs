@@ -23,6 +23,8 @@ const outputs = [
   { size: 192, out: path.join(iconsDir, 'icon-192-FF.png') },
   { size: 512, out: path.join(iconsDir, 'icon-512-FF.png') },
   { size: 180, out: path.join(iconsDir, 'apple-touch-icon-FF.png') },
+  // Root-level iOS icon for Home Screen
+  { size: 180, out: path.join(projectRoot, 'public', 'apple-touch-icon.png') },
 ];
 
 const maskableOutputs = [
