@@ -1,5 +1,5 @@
 "use client";
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Title from './Title';
 
 export default function Header({ 
@@ -20,6 +20,32 @@ export default function Header({
   const [showLoadMenu, setShowLoadMenu] = useState(false);
   const [savedSchedules, setSavedSchedules] = useState([]);
   const [isLoadingSaved, setIsLoadingSaved] = useState(false);
+  const [deferredPrompt, setDeferredPrompt] = useState(null);
+  const [canInstall, setCanInstall] = useState(false);
+
+  useEffect(() => {
+    const onBIP = (e) => {
+      // Chrome/Edge fires this when app is installable
+      e.preventDefault();
+      setDeferredPrompt(e);
+      setCanInstall(true);
+    };
+    const onInstalled = () => {
+      setDeferredPrompt(null);
+      setCanInstall(false);
+    };
+    window.addEventListener('beforeinstallprompt', onBIP);
+    window.addEventListener('appinstalled', onInstalled);
+
+    // Hide button if already running as installed app
+    const isStandalone = window.matchMedia?.('(display-mode: standalone)').matches || window.navigator.standalone === true;
+    if (isStandalone) setCanInstall(false);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', onBIP);
+      window.removeEventListener('appinstalled', onInstalled);
+    };
+  }, []);
 
   const handleSave = async () => {
     const defaultName = brideName ? `${brideName} schedule` : 'Untitled Schedule';
@@ -75,6 +101,17 @@ export default function Header({
     }
   };
 
+  const handleInstallClick = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    try {
+      await deferredPrompt.userChoice;
+    } finally {
+      setDeferredPrompt(null);
+      setCanInstall(false);
+    }
+  };
+
   return (
     <header>
       <div className="header-top">
@@ -86,6 +123,15 @@ export default function Header({
             >
               Settings
             </button>
+            {canInstall && (
+              <button
+                className="btn btn-secondary"
+                onClick={handleInstallClick}
+                title="Install app"
+              >
+                Install
+              </button>
+            )}
             <button 
               className="btn btn-icon-small has-icon" 
               title="Undo"
