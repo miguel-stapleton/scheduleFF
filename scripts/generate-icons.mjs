@@ -20,14 +20,14 @@ const brand = {
 };
 
 const outputs = [
-  { size: 192, out: path.join(iconsDir, 'icon-192.png') },
-  { size: 512, out: path.join(iconsDir, 'icon-512.png') },
-  { size: 180, out: path.join(iconsDir, 'apple-touch-icon-180.png') },
+  { size: 192, out: path.join(iconsDir, 'icon-192-FF.png') },
+  { size: 512, out: path.join(iconsDir, 'icon-512-FF.png') },
+  { size: 180, out: path.join(iconsDir, 'apple-touch-icon-FF.png') },
 ];
 
 const maskableOutputs = [
-  { size: 192, out: path.join(iconsDir, 'icon-maskable-192.png') },
-  { size: 512, out: path.join(iconsDir, 'icon-maskable-512.png') },
+  { size: 192, out: path.join(iconsDir, 'icon-maskable-192-FF.png') },
+  { size: 512, out: path.join(iconsDir, 'icon-maskable-512-FF.png') },
 ];
 
 const screenshots = [
