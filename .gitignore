@@ -57,3 +57,7 @@ env/
 # Misc
 .sass-cache/
 .babel-cache/
+
+# Track PWA icons used by manifest.json
+!public/icons/
+!public/icons/*.png
