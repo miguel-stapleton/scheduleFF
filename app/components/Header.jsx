@@ -55,6 +55,38 @@ export default function Header({
 
   return (
     <header>
+      <div className="title-section">
+        <div className="logo-section">
+          <img src="/images/FFlogo.jpg" alt="FF Logo" className="app-logo" />
+        </div>
+        <Title brideName={brideName} />
+      </div>
+      
+      <p className="schedule-subtitle">
+        {(() => {
+          if (!brideName) return 'Create your perfect wedding day beauty timeline';
+          
+          const parts = [];
+          
+          if (weddingDate && weddingDate.trim()) {
+            const [y, m, d] = weddingDate.split('-').map(Number);
+            const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+            if (y && m && d) {
+              parts.push(`${monthNames[m - 1]} ${d}, ${y}`);
+            } else {
+              parts.push(weddingDate);
+            }
+          }
+          
+          if (weddingLocation && weddingLocation.trim()) {
+            parts.push(weddingLocation);
+          }
+          
+          return parts.length > 0 ? parts.join(', ') : `Beauty schedule for ${brideName}'s special day`;
+        })()}
+      </p>
+      
+      {/* Icon row: Undo, Save, Load, Crop (desktop Settings button remains here). On iPhone, this sits under subtitle. */}
       <div className="header-top">
         <div className="header-right">
           <div className="header-top-row">
@@ -98,38 +130,14 @@ export default function Header({
         </div>
       </div>
       
-      <div className="title-section">
-        <div className="logo-section">
-          <img src="/images/FFlogo.jpg" alt="FF Logo" className="app-logo" />
-        </div>
-        <Title brideName={brideName} />
-      </div>
-      
-      <p className="schedule-subtitle">
-        {(() => {
-          if (!brideName) return 'Create your perfect wedding day beauty timeline';
-          
-          const parts = [];
-          
-          if (weddingDate && weddingDate.trim()) {
-            const [y, m, d] = weddingDate.split('-').map(Number);
-            const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-            if (y && m && d) {
-              parts.push(`${monthNames[m - 1]} ${d}, ${y}`);
-            } else {
-              parts.push(weddingDate);
-            }
-          }
-          
-          if (weddingLocation && weddingLocation.trim()) {
-            parts.push(weddingLocation);
-          }
-          
-          return parts.length > 0 ? parts.join(', ') : `Beauty schedule for ${brideName}'s special day`;
-        })()}
-      </p>
-      
       <div className="controls">
+        {/* iPhone-only Settings at the bottom with primary actions */}
+        <button 
+          className="btn btn-settings platform-ios-only"
+          onClick={onOpenSettingsModal}
+        >
+          Settings
+        </button>
         <button 
           className="btn btn-primary"
           onClick={onOpenGuestModal}

@@ -614,12 +614,27 @@ export default function WeddingScheduleApp() {
       }
     }
 
+    // Track and temporarily switch device classes on <html> so export uses desktop styles
+    const htmlEl = typeof document !== 'undefined' ? document.documentElement : null;
+    let prevDeviceClasses = [];
+    let wasIPhone = false;
     try {
       // Import dom-to-image dynamically
       const domtoimage = (await import('dom-to-image')).default;
       
-      // Add export class to hide buttons during capture
+      // Temporarily switch to desktop device class to neutralize iPhone-specific CSS
+      if (htmlEl) {
+        prevDeviceClasses = Array.from(htmlEl.classList).filter(c => c.startsWith('device-'));
+        wasIPhone = prevDeviceClasses.includes('device-iphone');
+        prevDeviceClasses.forEach(c => htmlEl.classList.remove(c));
+        htmlEl.classList.add('device-desktop');
+      }
+      
+      // Add export class to hide buttons during capture and apply export overrides
       document.body.classList.add('exporting');
+      if (wasIPhone) {
+        document.body.classList.add('exporting-iphone');
+      }
       
       // Wait for fonts to load and styles to apply
       await new Promise(resolve => setTimeout(resolve, 500));
@@ -630,36 +645,89 @@ export default function WeddingScheduleApp() {
         console.error('Container element not found');
         return;
       }
-      
-      // Ensure fonts are loaded before capture
-      await document.fonts.ready;
-      
-      // Use dom-to-image for better font rendering
-      const dataUrl = await domtoimage.toJpeg(element, {
-        quality: 0.9,
-        bgcolor: '#ffffff',
-        width: element.offsetWidth * 2,
-        height: element.offsetHeight * 2,
-        style: {
-          transform: 'scale(2)',
-          transformOrigin: 'top left'
+
+      // Compute full content dimensions to avoid cropping (desktop overflow on right)
+      const scheduleContainer = element.querySelector('.schedule-container');
+      const artistsContainer = element.querySelector('.artists-container');
+      const timeCol = element.querySelector('.time-column');
+
+      const widths = [element.scrollWidth, element.offsetWidth];
+      if (scheduleContainer) widths.push(scheduleContainer.scrollWidth, scheduleContainer.offsetWidth);
+      if (artistsContainer) widths.push(artistsContainer.scrollWidth, artistsContainer.offsetWidth);
+      if (timeCol) widths.push(timeCol.scrollWidth + (artistsContainer ? artistsContainer.scrollWidth : 0));
+      const contentWidth = Math.max(...widths.filter(Boolean));
+      const contentHeight = Math.max(element.scrollHeight, element.offsetHeight);
+
+      // Temporarily enforce explicit size and visible overflow on the element for capture
+      const prevInlineWidth = element.style.width;
+      const prevInlineHeight = element.style.height;
+      const prevInlineOverflow = element.style.overflow;
+      element.style.width = `${contentWidth}px`;
+      element.style.height = `${contentHeight}px`;
+      element.style.overflow = 'visible';
+
+      try {
+        // Ensure all images within the export area are fully loaded and decoded (iOS portrait fix)
+        const images = Array.from(element.querySelectorAll('img'));
+        if (images.length) {
+          await Promise.all(images.map((img) => {
+            const waitLoad = (img.complete && img.naturalWidth)
+              ? Promise.resolve()
+              : new Promise((res) => {
+                  img.addEventListener('load', res, { once: true });
+                  img.addEventListener('error', res, { once: true });
+                });
+            const waitDecode = typeof img.decode === 'function' ? img.decode().catch(() => {}) : Promise.resolve();
+            return Promise.all([waitLoad, waitDecode]);
+          }));
         }
-      });
-      
-      // Create download link
-      const link = document.createElement('a');
-      link.href = dataUrl;
-      link.download = `wedding-schedule-${brideName || 'untitled'}-${new Date().toISOString().split('T')[0]}.jpg`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      
+
+        // Ensure fonts are loaded before capture
+        await document.fonts.ready;
+
+        // Use dom-to-image for better font rendering
+        const scale = 2;
+        const dataUrl = await domtoimage.toJpeg(element, {
+          quality: 0.9,
+          bgcolor: '#ffffff',
+          width: contentWidth * scale,
+          height: contentHeight * scale,
+          cacheBust: true,
+          style: {
+            transform: `scale(${scale})`,
+            transformOrigin: 'top left',
+            width: `${contentWidth}px`,
+            height: `${contentHeight}px`,
+            overflow: 'visible'
+          }
+        });
+
+        // Create download link
+        const link = document.createElement('a');
+        link.href = dataUrl;
+        link.download = `wedding-schedule-${brideName || 'untitled'}-${new Date().toISOString().split('T')[0]}.jpg`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+      } finally {
+        // Restore inline styles
+        element.style.width = prevInlineWidth;
+        element.style.height = prevInlineHeight;
+        element.style.overflow = prevInlineOverflow;
+      }
     } catch (error) {
       console.error('Export failed:', error);
       alert('Export failed. Please try again.');
     } finally {
       // Remove export class to restore buttons
       document.body.classList.remove('exporting');
+      document.body.classList.remove('exporting-iphone');
+      // Restore original device classes on <html>
+      if (htmlEl) {
+        htmlEl.classList.remove('device-desktop');
+        prevDeviceClasses.forEach(c => htmlEl.classList.add(c));
+      }
     }
   }, [brideName, clients, artists, validateServiceAssignments]);
 
@@ -970,7 +1038,7 @@ export default function WeddingScheduleApp() {
           setClients,
           saveToHistory: saveToHistory
         }}
-        onUpdateArtists={setArtists}
+        onUpdateArtists={{ setArtists, saveToHistory }}
         onDeleteArtist={deleteArtist}
         durations={durations}
         onOpenEditBlockModal={(block) => { setEditingBlock(block); openModal('editBlock'); }}

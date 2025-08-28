@@ -1104,27 +1104,122 @@ select:focus {
 }
 
 /* iPhone-only layout tweaks */
+html.device-iphone header {
+  /* vertical stack and reserve space for bottom buttons */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+  padding-top: 16px;
+  padding-bottom: 88px;
+  min-height: 320px;
+}
+
+/* Centered small logo at the top */
+html.device-iphone .logo-section {
+  position: static;
+  left: auto;
+  top: auto;
+  transform: none;
+  display: flex;
+  justify-content: center;
+}
 html.device-iphone .app-logo {
-  height: 90px; /* half of original 180px */
+  height: 70px;
+}
+
+/* Title section becomes a column under the logo, centered */
+html.device-iphone .title-section {
+  order: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  width: 100%;
+  margin-top: 6px;
+  gap: 8px;
+}
+html.device-iphone .logo-section { order: 1; }
+html.device-iphone #schedule-title { order: 2; font-size: 1.3rem; margin: 0; }
+html.device-iphone .schedule-subtitle { order: 3; font-size: 0.9rem; margin: 4px 0 8px; }
+
+/* Icon row (Undo/Save/Load/Crop) under subtitle and centered */
+html.device-iphone .header-top { order: 4; position: static; margin: 8px 0 10px; }
+html.device-iphone .header-right { display: flex; flex-direction: row; align-items: center; justify-content: center; gap: 10px; }
+html.device-iphone .header-top-row { display: flex; gap: 10px; justify-content: center; }
+html.device-iphone .header-bottom-row { margin-top: 0; }
+html.device-iphone .btn-icon-small { width: 34px; height: 34px; min-width: 34px; padding: 6px; }
+html.device-iphone .btn-icon-small img { width: 20px; height: 20px; }
+html.device-iphone .header-top .btn-settings { display: none; }
+
+/* Bottom row: Settings, Add Guest, Add Artist, Export as 4 equal columns */
+html.device-iphone .controls {
+  order: 5;
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  right: 12px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr)); /* allow items to shrink */
+  gap: 6px; /* slightly tighter spacing for small screens */
+  align-items: stretch;
+}
+html.device-iphone .controls .btn {
+  width: 100%;
+  min-width: 0; /* override any global min-width */
+  padding: 6px 6px; /* smaller buttons */
+  font-size: 11px; /* smaller text */
+  line-height: 1.1;
+  text-align: center;
+  border-radius: 8px; /* smaller pill radius to reduce visual merging */
+  white-space: normal; /* allow wrapping to avoid overflow */
+}
+html.device-iphone .controls .btn.btn-settings {
+  padding: 4px 4px;
+  font-size: 10px;
+  letter-spacing: 0.1px;
+  text-transform: none; /* reduce width vs global uppercase */
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+html.device-iphone .controls .btn-settings {
+  padding: 5px 6px;
+  font-size: 10.5px;
+  letter-spacing: 0.2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Primary action buttons under subtitle: smaller */
+html.device-iphone .controls .btn {
+  padding: 6px 6px; /* keep consistent with earlier iPhone sizing */
+  font-size: 11px;
+}
+
+/* Artist header minor size tweak */
+html.device-iphone .artist-header { font-size: 14px; }
+html.device-iphone .artist-header input { font-size: 12px; }
+
+/* iPhone-only layout tweaks */
+html.device-ios .app-logo {
+  height: 110px; /* was 180px on-screen */
 }
 
 /* Pin Settings to top-right corner of header */
 html.device-iphone header {
-  padding-top: 60px; /* make room for pinned settings */
+  padding-top: 16px; /* standard top padding; no pinned settings on iPhone */
 }
 html.device-iphone .btn-settings {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  z-index: 200;
-  padding: 6px 10px;
-  font-size: 11px;
+  position: static; /* ensure Settings participates in grid layout */
+  top: auto;
+  right: auto;
 }
 
 /* Place save/load to the right side under Settings, smaller size */
 html.device-iphone .header-top {
-  top: 56px; /* below pinned settings */
-  right: 8px;
+  top: auto; /* below pinned settings */
+  right: auto;
 }
 html.device-iphone .header-top-row {
   gap: 8px;
@@ -1169,6 +1264,32 @@ html.device-iphone .artist-header input {
   font-size: 12px;
 }
 
+/* iPhone: shrink all text inside schedule blocks */
+html.device-iphone .client-block .client-info,
+html.device-iphone .client-block .client-name,
+html.device-iphone .client-block .client-service,
+html.device-iphone .client-block .client-duration,
+html.device-iphone .client-block .client-time,
+html.device-iphone .client-block .client-time-range {
+  line-height: 1.05;
+}
+
+/* Names */
+html.device-iphone .client-block .client-name { font-size: 9px !important; }
+html.device-iphone .client-block.small .client-name { font-size: 11px !important; }
+html.device-iphone .client-block.medium .client-name { font-size: 12px !important; }
+
+/* Secondary text even smaller */
+html.device-iphone .client-block .client-service,
+html.device-iphone .client-block .client-duration,
+html.device-iphone .client-block .client-time,
+html.device-iphone .client-block .client-time-range,
+html.device-iphone .client-block.small .client-duration,
+html.device-iphone .client-block.medium .client-duration,
+html.device-iphone .client-block.medium .client-service {
+  font-size: 8px !important;
+}
+
 /* Export styles - hide buttons and controls during image capture */
 .exporting .btn,
 .exporting .controls,
@@ -1186,21 +1307,30 @@ html.device-iphone .artist-header input {
 }
 
 .exporting .container {
-    padding-top: 30px; /* Reduce top padding when buttons are hidden */
+    padding-top: 240px; /* Match desktop layout padding for export */
 }
 
 .exporting header {
-    margin-bottom: 20px;
+    margin-bottom: 30px; /* Match desktop header margin for export */
 }
 
 /* Adjust logo position specifically for export to better match on-screen layout */
-.exporting .logo-section {
-    top: 100%; /* was 120% on-screen; move higher for export */
+.exporting.exporting-iphone .logo-section {
+    top: 120%; /* match desktop positioning */
+    transform: translateY(-50%);
+    position: absolute !important; /* ensure iPhone static override is neutralized */
+    left: 0 !important;
+    z-index: 5; /* render above header content */
+    display: block !important; /* guarantee it's rendered */
 }
 
 /* Make logo a bit smaller in exported image */
-.exporting .app-logo {
-    height: 150px; /* was 180px on-screen */
+.exporting.exporting-iphone .app-logo {
+    height: 180px; /* match desktop on-screen */
+    width: auto !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    display: block !important;
 }
 
 /* Preserve artist header styling during export */
@@ -1220,6 +1350,72 @@ html.device-iphone .artist-header input {
     letter-spacing: 1px !important;
     text-transform: uppercase !important;
     color: white !important;
+}
+
+/* Ensure export uses desktop-like block text sizes even on iPhone */
+.exporting .client-block .client-info,
+.exporting .client-block .client-name,
+.exporting .client-block .client-service,
+.exporting .client-block .client-duration,
+.exporting .client-block .client-time,
+.exporting .client-block .client-time-range {
+  line-height: 1.1 !important; /* neutralize iPhone 1.05 */
+}
+
+/* Names */
+.exporting .client-block .client-name { font-size: 12px !important; }
+.exporting .client-block.small .client-name { font-size: 11px !important; }
+.exporting .client-block.medium .client-name { font-size: 12px !important; }
+
+/* Services */
+.exporting .client-block .client-service { font-size: 10px !important; }
+.exporting .client-block.medium .client-service { font-size: 11px !important; }
+
+/* Durations / time */
+.exporting .client-block .client-duration { font-size: 10px !important; }
+.exporting .client-block.medium .client-duration { font-size: 11px !important; }
+.exporting .client-block .client-time,
+.exporting .client-block .client-time-range { font-size: 11px !important; }
+.exporting .client-block.special .client-time-range { font-size: 12px !important; }
+
+/* Prevent iOS/Safari text auto-scaling during export */
+.exporting {
+  -webkit-text-size-adjust: 100% !important;
+  text-size-adjust: 100% !important;
+}
+
+/* Force desktop layout sizing during export (iPhone-only) */
+.exporting.exporting-iphone .container {
+  width: 1200px !important;
+  max-width: 1200px !important;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 30px; /* desktop default */
+  padding-right: 30px; /* desktop default */
+}
+
+/* Avoid clipping content on all exports */
+.exporting .container { overflow: visible !important; }
+
+/* iPhone-only: allow absolutely positioned logo to render fully */
+.exporting.exporting-iphone .container { overflow: visible !important; }
+.exporting.exporting-iphone header,
+.exporting.exporting-iphone .title-section { overflow: visible !important; }
+
+.exporting #schedule-title { font-size: 1.8rem !important; }
+.exporting .schedule-subtitle { font-size: 1.1rem !important; }
+.exporting .artists-container { overflow-x: visible !important; }
+.exporting .time-column { width: 100px !important; flex: 0 0 100px !important; }
+.exporting .time-header { font-size: 18px !important; }
+.exporting .time-slot { font-size: 12px !important; }
+
+/* Desktop export: move logo a bit further up and slightly reduce size */
+.exporting:not(.exporting-iphone) .logo-section {
+  top: 96% !important; /* moved further up from 100% */
+}
+.exporting:not(.exporting-iphone) .app-logo {
+  height: 160px !important; /* was 180px */
+  width: auto !important;
 }
 
 /* Device-specific hooks */
@@ -1243,4 +1439,24 @@ html.device-desktop .platform-desktop-only { display: initial; }
 .platform-ios-only,
 .platform-desktop-only {
     display: none;
+}
+
+/* iPhone export: place logo inside the title box on the left of the title */
+.exporting.exporting-iphone .title-section {
+  display: grid !important;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 16px;
+}
+.exporting.exporting-iphone .logo-section {
+  position: static !important;
+  left: auto !important;
+  top: auto !important;
+  transform: none !important;
+  display: block !important;
+  justify-self: start;
+}
+.exporting.exporting-iphone #schedule-title {
+  justify-self: center;
+  text-align: center;
 }

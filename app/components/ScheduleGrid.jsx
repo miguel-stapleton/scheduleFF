@@ -18,6 +18,8 @@ export default function ScheduleGrid({ timeSlots, artists, clients, onUpdateClie
   const isTouchDevice = typeof window !== 'undefined' && (('ontouchstart' in window) || (navigator.maxTouchPoints > 0));
   // Track which artist header is active (focused) to show delete icon
   const [activeArtistIndex, setActiveArtistIndex] = useState(null);
+  const activeArtistOriginalNameRef = useRef(null);
+  const hasSavedHistoryForActiveArtistRef = useRef(false);
 
   // Calculate time slot height (assuming each slot is 15 minutes)
   const timeSlotHeight = 30; // pixels per 15-minute slot
@@ -54,6 +56,24 @@ export default function ScheduleGrid({ timeSlots, artists, clients, onUpdateClie
       onUpdateClients.saveToHistory('dragBlock', 'Moved block');
     }
   }, [onUpdateClients]);
+
+  // Unified helpers for updating artists and saving history from this component
+  const setArtistsUnified = useCallback((nextArtists) => {
+    if (typeof onUpdateArtists === 'function') {
+      onUpdateArtists(nextArtists);
+    } else if (onUpdateArtists && typeof onUpdateArtists.setArtists === 'function') {
+      onUpdateArtists.setArtists(nextArtists);
+    }
+  }, [onUpdateArtists]);
+
+  const saveArtistHistoryIfAvailable = useCallback((actionType, description) => {
+    if (onUpdateArtists && typeof onUpdateArtists !== 'function' && typeof onUpdateArtists.saveToHistory === 'function') {
+      onUpdateArtists.saveToHistory(actionType, description);
+    } else if (onUpdateClients && typeof onUpdateClients.saveToHistory === 'function') {
+      // Fallback: use the clients updater's saveToHistory (same upstream function)
+      onUpdateClients.saveToHistory(actionType, description);
+    }
+  }, [onUpdateArtists, onUpdateClients]);
 
   // Handle drop
   const handleDrop = useCallback((e, artistIndex, timeSlotIndex) => {
@@ -452,20 +472,31 @@ export default function ScheduleGrid({ timeSlots, artists, clients, onUpdateClie
                 type="text"
                 value={artist.name}
                 placeholder={artist.specialty === 'makeup' ? 'Make-up Artist' : 'Hairstylist'}
-                onFocus={() => setActiveArtistIndex(artistIndex)}
+                onFocus={() => { setActiveArtistIndex(artistIndex); activeArtistOriginalNameRef.current = artist.name; hasSavedHistoryForActiveArtistRef.current = false; }}
                 onChange={(e) => {
+                  const newName = e.target.value;
+                  if (!hasSavedHistoryForActiveArtistRef.current && newName !== artist.name) {
+                    const original = activeArtistOriginalNameRef.current || artist.name;
+                    saveArtistHistoryIfAvailable('renameArtist', `Renamed ${original} (${artist.specialty})`);
+                    hasSavedHistoryForActiveArtistRef.current = true;
+                  }
                   const updatedArtists = { ...artists };
                   const specialtyIndex = artist.specialty === 'makeup' ? 
                     artistIndex : 
                     artistIndex - artists.makeup.length;
                   
                   updatedArtists[artist.specialty] = [...updatedArtists[artist.specialty]];
-                  updatedArtists[artist.specialty][specialtyIndex] = { ...artist, name: e.target.value };
-                  onUpdateArtists(updatedArtists);
+                  updatedArtists[artist.specialty][specialtyIndex] = { ...artist, name: newName };
+                  setArtistsUnified(updatedArtists);
                 }}
                 onBlur={(e) => {
                   if (!e.target.value.trim()) {
                     const defaultName = artist.specialty === 'makeup' ? 'Make-up Artist' : 'Hairstylist';
+                    if (!hasSavedHistoryForActiveArtistRef.current && defaultName !== artist.name) {
+                      const original = activeArtistOriginalNameRef.current || artist.name;
+                      saveArtistHistoryIfAvailable('renameArtist', `Renamed ${original} (${artist.specialty})`);
+                      hasSavedHistoryForActiveArtistRef.current = true;
+                    }
                     const updatedArtists = { ...artists };
                     const specialtyIndex = artist.specialty === 'makeup' ? 
                       artistIndex : 
@@ -473,7 +504,7 @@ export default function ScheduleGrid({ timeSlots, artists, clients, onUpdateClie
                     
                     updatedArtists[artist.specialty] = [...updatedArtists[artist.specialty]];
                     updatedArtists[artist.specialty][specialtyIndex] = { ...artist, name: defaultName };
-                    onUpdateArtists(updatedArtists);
+                    setArtistsUnified(updatedArtists);
                   }
                   // Hide delete icon when input loses focus
                   setActiveArtistIndex(null);
