@@ -1103,6 +1103,72 @@ select:focus {
     }
 }
 
+/* iPhone-only layout tweaks */
+html.device-iphone .app-logo {
+  height: 90px; /* half of original 180px */
+}
+
+/* Pin Settings to top-right corner of header */
+html.device-iphone header {
+  padding-top: 60px; /* make room for pinned settings */
+}
+html.device-iphone .btn-settings {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 200;
+  padding: 6px 10px;
+  font-size: 11px;
+}
+
+/* Place save/load to the right side under Settings, smaller size */
+html.device-iphone .header-top {
+  top: 56px; /* below pinned settings */
+  right: 8px;
+}
+html.device-iphone .header-top-row {
+  gap: 8px;
+}
+html.device-iphone .btn-icon-small {
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  padding: 6px;
+}
+html.device-iphone .btn-icon-small img {
+  width: 22px;
+  height: 22px;
+}
+
+/* Title and subtitle smaller and slightly lower */
+html.device-iphone .title-section {
+  margin-top: 10px;
+  gap: 12px;
+}
+html.device-iphone #schedule-title {
+  font-size: 1.4rem;
+  margin-top: 6px;
+}
+html.device-iphone .schedule-subtitle {
+  font-size: 0.9rem;
+  margin-top: 4px;
+  margin-bottom: 12px;
+}
+
+/* Primary action buttons under subtitle: smaller */
+html.device-iphone .controls .btn {
+  padding: 8px 12px;
+  font-size: 12px;
+}
+
+/* Artist names at top of columns smaller */
+html.device-iphone .artist-header {
+  font-size: 14px;
+}
+html.device-iphone .artist-header input {
+  font-size: 12px;
+}
+
 /* Export styles - hide buttons and controls during image capture */
 .exporting .btn,
 .exporting .controls,

@@ -1,12 +1,10 @@
 import '../styles.css';
 import BootstrapClient from './components/BootstrapClient';
-import { headers } from 'next/headers';
 
 export const metadata = {
   title: 'Wedding Day Beauty Schedule',
   description: 'Kanban-style wedding day beauty schedule creator',
   manifest: '/manifest.json',
-  themeColor: '#000000',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
@@ -16,17 +14,15 @@ export const metadata = {
   },
 };
 
-// Ensure per-request rendering so the device class reflects the current UA
+export const viewport = {
+  themeColor: '#000000',
+};
+
 export const dynamic = 'force-dynamic';
 
 export default function RootLayout({ children }) {
-  const ua = headers().get('user-agent') || '';
-  const isAndroid = /Android/i.test(ua);
-  const isIOS = /(iPhone|iPad|iPod)/i.test(ua);
-  const deviceClass = isAndroid ? 'device-android' : isIOS ? 'device-ios' : 'device-desktop';
-
   return (
-    <html lang="en" className={deviceClass}>
+    <html lang="en">
       <body>
         <BootstrapClient />
         {children}
