@@ -121,7 +121,7 @@ export default function Header({
               className="btn btn-settings"
               onClick={onOpenSettingsModal}
             >
-              Settings
+              settingss
             </button>
             {canInstall && (
               <button

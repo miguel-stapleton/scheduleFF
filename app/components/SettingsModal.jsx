@@ -126,7 +126,7 @@ export default function SettingsModal({ onClose, onSave, currentSettings, durati
               onClose();
             }
           }}>&times;</span>
-          <h2>Schedule Settings</h2>
+          <h2>settingss</h2>
           <form onSubmit={handleSubmit}>
           <div className="form-group">
             <label htmlFor="settings-bride-name">Bride's Name:</label>
