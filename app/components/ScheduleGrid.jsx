@@ -1,7 +1,7 @@
 "use client";
 import { useState, useCallback, useRef, useEffect } from 'react';
 
-export default function ScheduleGrid({ timeSlots, artists, clients, onUpdateClients, onUpdateArtists, durations, onOpenEditBlockModal, onExtendEnd, onExtendStart }) {
+export default function ScheduleGrid({ timeSlots, artists, clients, onUpdateClients, onUpdateArtists, onDeleteArtist, durations, onOpenEditBlockModal, onExtendEnd, onExtendStart }) {
   const [draggedClient, setDraggedClient] = useState(null);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [isDraggingPanel, setIsDraggingPanel] = useState(false);
@@ -16,6 +16,8 @@ export default function ScheduleGrid({ timeSlots, artists, clients, onUpdateClie
   const touchLastPosRef = useRef({ x: 0, y: 0 });
   const ignoreNextClickRef = useRef(false);
   const isTouchDevice = typeof window !== 'undefined' && (('ontouchstart' in window) || (navigator.maxTouchPoints > 0));
+  // Track which artist header is active (focused) to show delete icon
+  const [activeArtistIndex, setActiveArtistIndex] = useState(null);
 
   // Calculate time slot height (assuming each slot is 15 minutes)
   const timeSlotHeight = 30; // pixels per 15-minute slot
@@ -450,6 +452,7 @@ export default function ScheduleGrid({ timeSlots, artists, clients, onUpdateClie
                 type="text"
                 value={artist.name}
                 placeholder={artist.specialty === 'makeup' ? 'Make-up Artist' : 'Hairstylist'}
+                onFocus={() => setActiveArtistIndex(artistIndex)}
                 onChange={(e) => {
                   const updatedArtists = { ...artists };
                   const specialtyIndex = artist.specialty === 'makeup' ? 
@@ -472,8 +475,27 @@ export default function ScheduleGrid({ timeSlots, artists, clients, onUpdateClie
                     updatedArtists[artist.specialty][specialtyIndex] = { ...artist, name: defaultName };
                     onUpdateArtists(updatedArtists);
                   }
+                  // Hide delete icon when input loses focus
+                  setActiveArtistIndex(null);
                 }}
               />
+              {activeArtistIndex === artistIndex && (
+                <button
+                  type="button"
+                  className="btn btn-icon-small artist-delete"
+                  title="Delete artist"
+                  onMouseDown={() => {
+                    const specialtyIndex = artist.specialty === 'makeup'
+                      ? artistIndex
+                      : artistIndex - artists.makeup.length;
+                    if (onDeleteArtist) onDeleteArtist(artist.specialty, specialtyIndex);
+                  }}
+                  style={{ marginLeft: '6px' }}
+                  aria-label={`Delete ${artist.name}`}
+                >
+                  ×
+                </button>
+              )}
             </div>
             
             <div

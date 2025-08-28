@@ -10,16 +10,11 @@ export default function Header({
   onOpenArtistModal, 
   onOpenSettingsModal, 
   onExport, 
-  onSave, 
-  onLoad, 
-  getSavedSchedules,
-  onDeleteSchedule,
+  onOpenSaveModal,
+  onOpenLoadModal,
   onCropSchedule,
   onUndo 
 }) {
-  const [showLoadMenu, setShowLoadMenu] = useState(false);
-  const [savedSchedules, setSavedSchedules] = useState([]);
-  const [isLoadingSaved, setIsLoadingSaved] = useState(false);
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [canInstall, setCanInstall] = useState(false);
 
@@ -47,60 +42,6 @@ export default function Header({
     };
   }, []);
 
-  const handleSave = async () => {
-    const defaultName = brideName ? `${brideName} schedule` : 'Untitled Schedule';
-    const name = typeof window !== 'undefined'
-      ? prompt('Enter a name for this schedule:', defaultName)
-      : defaultName;
-    if (name && name.trim()) {
-      try {
-        await onSave(name.trim());
-        alert('Schedule saved.');
-      } catch (e) {
-        alert(`Save failed: ${e?.message || 'Unknown error'}`);
-      }
-    }
-  };
-
-  const handleLoad = (scheduleId) => {
-    onLoad(scheduleId);
-    setShowLoadMenu(false);
-  };
-
-  const toggleLoadMenu = async () => {
-    if (!showLoadMenu) {
-      setIsLoadingSaved(true);
-      try {
-        const items = await getSavedSchedules();
-        setSavedSchedules(items);
-      } catch (e) {
-        console.error(e);
-        setSavedSchedules([]);
-      } finally {
-        setIsLoadingSaved(false);
-      }
-    }
-    setShowLoadMenu(!showLoadMenu);
-  };
-
-  const handleLoadSchedule = (scheduleId) => {
-    onLoad(scheduleId);
-    setShowLoadMenu(false);
-  };
-
-  const handleDeleteClick = async (e, scheduleId) => {
-    e.stopPropagation();
-    const ok = typeof window !== 'undefined' ? confirm('Delete this schedule? This cannot be undone.') : true;
-    if (!ok) return;
-    try {
-      await onDeleteSchedule(scheduleId);
-      // Optimistically update list without closing the menu
-      setSavedSchedules((prev) => prev.filter((s) => s.id !== scheduleId));
-    } catch (err) {
-      alert(err?.message || 'Failed to delete schedule');
-    }
-  };
-
   const handleInstallClick = async () => {
     if (!deferredPrompt) return;
     deferredPrompt.prompt();
@@ -121,17 +62,8 @@ export default function Header({
               className="btn btn-settings"
               onClick={onOpenSettingsModal}
             >
-              settingss
+              Settings
             </button>
-            {canInstall && (
-              <button
-                className="btn btn-secondary"
-                onClick={handleInstallClick}
-                title="Install app"
-              >
-                Install
-              </button>
-            )}
             <button 
               className="btn btn-icon-small has-icon" 
               title="Undo"
@@ -142,49 +74,17 @@ export default function Header({
             <button 
               className="btn btn-icon-small has-icon" 
               title="Save Schedule"
-              onClick={handleSave}
+              onClick={onOpenSaveModal}
             >
               <img src="/images/savelogo.png" alt="Save Schedule" />
             </button>
-            <div className="load-dropdown">
-              <button 
-                className="btn btn-icon-small has-icon" 
-                title="Load Schedule"
-                onClick={toggleLoadMenu}
-              >
-                <img src="/images/openlogo.png" alt="Load Schedule" />
-              </button>
-              {showLoadMenu && (
-                <div className="dropdown-menu">
-                  {savedSchedules.length === 0 ? (
-                    <div className="dropdown-item disabled">No saved schedules</div>
-                  ) : (
-                    savedSchedules.map((schedule) => (
-                      <div 
-                        key={schedule.id} 
-                        className="dropdown-item"
-                      >
-                        <span 
-                          className="dropdown-item-name"
-                          onClick={() => handleLoadSchedule(schedule.id)}
-                        >
-                          {schedule.name || `Schedule ${schedule.id}`}
-                        </span>
-                        <button 
-                          className="dropdown-item-delete"
-                          title="Delete"
-                          onClick={(e) => handleDeleteClick(e, schedule.id)}
-                          aria-label={`Delete ${schedule.name || `Schedule ${schedule.id}`}`}
-                          style={{ marginLeft: 8 }}
-                        >
-                          ×
-                        </button>
-                      </div>
-                    ))
-                  )}
-                </div>
-              )}
-            </div>
+            <button 
+              className="btn btn-icon-small has-icon" 
+              title="Load Schedule"
+              onClick={onOpenLoadModal}
+            >
+              <img src="/images/openlogo.png" alt="Load Schedule" />
+            </button>
           </div>
           <div className="header-bottom-row">
             <button 

@@ -8,6 +8,8 @@ const GuestModal = dynamic(() => import('./GuestModal'), { ssr: false });
 const ArtistModal = dynamic(() => import('./ArtistModal'), { ssr: false });
 const SettingsModal = dynamic(() => import('./SettingsModal'), { ssr: false });
 const EditBlockModal = dynamic(() => import('./EditBlockModal'), { ssr: false });
+const SaveScheduleModal = dynamic(() => import('./SaveScheduleModal'), { ssr: false });
+const SavedSchedulesModal = dynamic(() => import('./SavedSchedulesModal'), { ssr: false });
 
 // Ordered palette for auto-assigned guest colors
 const GUEST_COLORS = [
@@ -67,7 +69,9 @@ export default function WeddingScheduleApp() {
     guest: false,
     artist: false,
     settings: false,
-    editBlock: false
+    editBlock: false,
+    saveSchedule: false,
+    loadSchedules: false,
   });
 
   const [editingBlock, setEditingBlock] = useState(null);
@@ -211,7 +215,7 @@ export default function WeddingScheduleApp() {
   };
 
   const closeAllModals = () => {
-    setModals({ guest: false, artist: false, settings: false, editBlock: false });
+    setModals({ guest: false, artist: false, settings: false, editBlock: false, saveSchedule: false, loadSchedules: false });
   };
 
   // Guest management
@@ -318,6 +322,45 @@ export default function WeddingScheduleApp() {
     
     closeModal('artist');
   }, [saveToHistory, artists]);
+
+  // Delete artist management
+  const deleteArtist = useCallback((specialty, specialtyIndex) => {
+    // Prevent deleting the last artist in a specialty
+    if (!artists?.[specialty] || artists[specialty].length <= 1) {
+      alert(`You must have at least one ${specialty === 'makeup' ? 'make-up artist' : 'hairstylist'}.`);
+      return;
+    }
+
+    const artistName = artists[specialty][specialtyIndex]?.name || (specialty === 'makeup' ? 'Make-up Artist' : 'Hairstylist');
+    const confirmed = confirm(`Delete ${artistName}?\n\nAny scheduled blocks assigned to this artist will be unscheduled.`);
+    if (!confirmed) return;
+
+    saveToHistory('deleteArtist', `Deleted ${specialty} artist: ${artistName}`);
+
+    // Compute the global index in the flattened allArtists array
+    const removedGlobalIndex = specialty === 'makeup'
+      ? specialtyIndex
+      : artists.makeup.length + specialtyIndex;
+
+    // Remove the artist from the list
+    setArtists(prev => {
+      const next = { ...prev };
+      next[specialty] = prev[specialty].filter((_, idx) => idx !== specialtyIndex);
+      return next;
+    });
+
+    // Remap clients: unschedule blocks assigned to removed artist; shift indices after it
+    setClients(prevClients => prevClients.map(c => {
+      if (c.artistIndex === undefined) return c;
+      if (c.artistIndex === removedGlobalIndex) {
+        return { ...c, artistIndex: undefined, timeSlotIndex: undefined, startTime: undefined, endTime: undefined, autoPositioned: false };
+      }
+      if (c.artistIndex > removedGlobalIndex) {
+        return { ...c, artistIndex: c.artistIndex - 1 };
+      }
+      return c;
+    }));
+  }, [artists, saveToHistory]);
 
   // Bride blocks management
   const createBrideBlocks = useCallback((name, overrideSettings = null) => {
@@ -689,6 +732,26 @@ export default function WeddingScheduleApp() {
     return res.json();
   }, [clients, artists, settings, durations, brideName]);
 
+  const updateScheduleById = useCallback(async (scheduleId, scheduleName) => {
+    const scheduleData = {
+      clients,
+      artists,
+      settings,
+      durations,
+      brideName,
+    };
+    const res = await fetch(`/api/schedules/${scheduleId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: scheduleName, data: scheduleData }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to update schedule');
+    }
+    return res.json();
+  }, [clients, artists, settings, durations, brideName]);
+
   const loadScheduleById = useCallback(async (scheduleId) => {
     const res = await fetch(`/api/schedules/${scheduleId}`);
     if (!res.ok) {
@@ -881,42 +944,7 @@ export default function WeddingScheduleApp() {
     saveToHistory('deleteBlock', `Deleted block: ${blockToDelete.name}`);
     const updatedClients = clients.filter(client => client.id !== blockToDelete.id);
     setClients(updatedClients);
-    closeEditBlockModal();
-  }, [saveToHistory]);
-
-  const saveEditedBlock = useCallback((editedBlock) => {
-    const updatedClients = clients.map(client => 
-      client.id === editedBlock.id ? editedBlock : client
-    );
-    setClients(updatedClients);
-    closeEditBlockModal();
-  }, [clients]);
-
-  const duplicateBlock = useCallback((blockToDuplicate) => {
-    saveToHistory('duplicateBlock', `Duplicated block: ${blockToDuplicate.name}`);
-    const baseId = typeof window !== 'undefined' ? Date.now() : Math.floor(Math.random() * 1e9);
-    const newIdSuffix = blockToDuplicate.service ? `-${blockToDuplicate.service}` : '';
-    const newBlock = {
-      ...blockToDuplicate,
-      id: `${baseId}${newIdSuffix}`,
-      artistIndex: undefined,
-      timeSlotIndex: undefined,
-      startTime: undefined,
-      endTime: undefined,
-      autoPositioned: false
-    };
-    setClients(prev => [...prev, newBlock]);
-  }, [saveToHistory]);
-
-  const openEditBlockModal = (block) => {
-    setEditingBlock(block);
-    openModal('editBlock');
-  };
-
-  const closeEditBlockModal = () => {
-    setEditingBlock(null);
-    closeModal('editBlock');
-  };
+  }, [clients, saveToHistory]);
 
   return (
     <div className="container">
@@ -928,10 +956,8 @@ export default function WeddingScheduleApp() {
         onOpenArtistModal={() => openModal('artist')}
         onOpenSettingsModal={() => openModal('settings')}
         onExport={exportSchedule}
-        onSave={saveSchedule}
-        onLoad={loadScheduleById}
-        getSavedSchedules={getSavedSchedules}
-        onDeleteSchedule={deleteScheduleById}
+        onOpenSaveModal={() => openModal('saveSchedule')}
+        onOpenLoadModal={() => openModal('loadSchedules')}
         onCropSchedule={cropSchedule}
         onUndo={undoLastChange}
       />
@@ -945,8 +971,9 @@ export default function WeddingScheduleApp() {
           saveToHistory: saveToHistory
         }}
         onUpdateArtists={setArtists}
+        onDeleteArtist={deleteArtist}
         durations={durations}
-        onOpenEditBlockModal={openEditBlockModal}
+        onOpenEditBlockModal={(block) => { setEditingBlock(block); openModal('editBlock'); }}
         onExtendEnd={extendVisibleEnd}
         onExtendStart={extendVisibleStart}
       />
@@ -982,10 +1009,29 @@ export default function WeddingScheduleApp() {
       {modals.editBlock && (
         <EditBlockModal
           block={editingBlock}
-          onClose={closeEditBlockModal}
-          onSave={saveEditedBlock}
-          onDelete={deleteBlock}
-          onDuplicate={duplicateBlock}
+          onClose={() => { setEditingBlock(null); closeModal('editBlock'); }}
+          onSave={(editedBlock) => { const updated = clients.map(c => c.id === editedBlock.id ? editedBlock : c); setClients(updated); closeModal('editBlock'); }}
+          onDelete={(block) => { saveToHistory('deleteBlock', `Deleted block: ${block.name}`); setClients(prev => prev.filter(c => c.id !== block.id)); closeModal('editBlock'); }}
+          onDuplicate={(block) => { saveToHistory('duplicateBlock', `Duplicated block: ${block.name}`); const baseId = typeof window !== 'undefined' ? Date.now() : Math.floor(Math.random() * 1e9); const suffix = block.service ? `-${block.service}` : ''; const newBlock = { ...block, id: `${baseId}${suffix}`, artistIndex: undefined, timeSlotIndex: undefined, startTime: undefined, endTime: undefined, autoPositioned: false }; setClients(prev => [...prev, newBlock]); closeModal('editBlock'); }}
+        />
+      )}
+
+      {modals.saveSchedule && (
+        <SaveScheduleModal
+          defaultName={brideName ? `${brideName} schedule` : 'Untitled Schedule'}
+          onClose={() => closeModal('saveSchedule')}
+          getSavedSchedules={getSavedSchedules}
+          onSaveNew={async (name) => { const r = await saveSchedule(name); alert('Schedule saved.'); return r; }}
+          onOverwrite={async (id, name) => { const r = await updateScheduleById(id, name); alert('Schedule overwritten.'); return r; }}
+        />
+      )}
+
+      {modals.loadSchedules && (
+        <SavedSchedulesModal
+          onClose={() => closeModal('loadSchedules')}
+          getSavedSchedules={getSavedSchedules}
+          onLoadSchedule={async (id) => { await loadScheduleById(id); closeModal('loadSchedules'); }}
+          onDeleteSchedule={deleteScheduleById}
         />
       )}
     </div>

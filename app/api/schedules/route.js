@@ -35,14 +35,21 @@ export async function POST(req) {
       return NextResponse.json({ error: 'Missing name or data' }, { status: 400 });
     }
 
+    const db = await getDb();
+    const col = db.collection('schedules');
+
+    // Enforce simple uniqueness on name (case-sensitive)
+    const existing = await col.findOne({ name });
+    if (existing) {
+      return NextResponse.json({ error: 'A schedule with this name already exists' }, { status: 409 });
+    }
+
     const doc = {
       name,
       data,
       savedAt: new Date().toISOString(),
     };
 
-    const db = await getDb();
-    const col = db.collection('schedules');
     const { insertedId } = await col.insertOne(doc);
 
     return NextResponse.json({ id: insertedId.toString(), ...doc }, { status: 201 });
