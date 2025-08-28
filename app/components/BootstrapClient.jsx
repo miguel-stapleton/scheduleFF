@@ -1,7 +1,26 @@
-"use client";
+'use client';
+import { useEffect, useRef } from 'react';
 
 export default function BootstrapClient() {
-  // No longer needed since we've moved to pure React
-  // This component is kept for backwards compatibility but does nothing
+  const hasRegisteredRef = useRef(false);
+
+  useEffect(() => {
+    if (hasRegisteredRef.current) return;
+    hasRegisteredRef.current = true;
+
+    if ('serviceWorker' in navigator) {
+      const registerSW = () => {
+        navigator.serviceWorker.getRegistration().then((reg) => {
+          if (!reg) {
+            navigator.serviceWorker.register('/sw.js').catch(console.error);
+          }
+        });
+      };
+
+      // Register immediately; do not depend on window 'load' firing
+      registerSW();
+    }
+  }, []);
+
   return null;
 }

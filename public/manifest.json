@@ -1,0 +1,36 @@
+{
+  "name": "My App",
+  "short_name": "MyApp",
+  "start_url": ".",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#000000",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "screenshots": [
+    {
+      "src": "/screenshots/app-wide-1200x800.png",
+      "sizes": "1200x800",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "Dashboard"
+    },
+    {
+      "src": "/screenshots/app-mobile-750x1334.png",
+      "sizes": "750x1334",
+      "type": "image/png",
+      "label": "Home"
+    }
+  ],
+  "protocol_handlers": [
+    {
+      "protocol": "web+weddingschedule",
+      "url": "/?uri=%s"
+    }
+  ]
+}

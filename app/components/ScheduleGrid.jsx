@@ -410,7 +410,11 @@ export default function ScheduleGrid({ timeSlots, artists, clients, onUpdateClie
         </div>
         <div className="time-slots">
           {timeSlots.map((time, index) => (
-            <div key={index} className="time-slot" style={{ height: timeSlotHeight }}>
+            <div
+              key={time}
+              className="time-slot"
+              style={{ height: timeSlotHeight }}
+            >
               {time}
             </div>
           ))}
@@ -479,7 +483,7 @@ export default function ScheduleGrid({ timeSlots, artists, clients, onUpdateClie
             >
               {timeSlots.map((time, timeSlotIndex) => (
                 <div
-                  key={timeSlotIndex}
+                  key={time}
                   className="schedule-slot"
                   style={{ height: timeSlotHeight }}
                 >

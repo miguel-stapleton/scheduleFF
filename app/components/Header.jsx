@@ -113,22 +113,22 @@ export default function Header({
                   {savedSchedules.length === 0 ? (
                     <div className="dropdown-item disabled">No saved schedules</div>
                   ) : (
-                    savedSchedules.map((schedule, index) => (
+                    savedSchedules.map((schedule) => (
                       <div 
-                        key={index} 
+                        key={schedule.id} 
                         className="dropdown-item"
                       >
                         <span 
                           className="dropdown-item-name"
                           onClick={() => handleLoadSchedule(schedule.id)}
                         >
-                          {schedule.name || `Schedule ${index + 1}`}
+                          {schedule.name || `Schedule ${schedule.id}`}
                         </span>
                         <button 
                           className="dropdown-item-delete"
                           title="Delete"
                           onClick={(e) => handleDeleteClick(e, schedule.id)}
-                          aria-label={`Delete ${schedule.name || `Schedule ${index + 1}`}`}
+                          aria-label={`Delete ${schedule.name || `Schedule ${schedule.id}`}`}
                           style={{ marginLeft: 8 }}
                         >
                           ×
@@ -166,9 +166,13 @@ export default function Header({
           const parts = [];
           
           if (weddingDate && weddingDate.trim()) {
-            const date = new Date(weddingDate);
-            const options = { year: 'numeric', month: 'long', day: 'numeric' };
-            parts.push(date.toLocaleDateString('en-US', options));
+            const [y, m, d] = weddingDate.split('-').map(Number);
+            const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+            if (y && m && d) {
+              parts.push(`${monthNames[m - 1]} ${d}, ${y}`);
+            } else {
+              parts.push(weddingDate);
+            }
           }
           
           if (weddingLocation && weddingLocation.trim()) {
