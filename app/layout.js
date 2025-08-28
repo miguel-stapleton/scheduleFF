@@ -5,6 +5,7 @@ export const metadata = {
   title: 'Wedding Day Beauty Schedule',
   description: 'Kanban-style wedding day beauty schedule creator',
   manifest: '/manifest.json',
+  themeColor: '#000000',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
@@ -12,10 +13,6 @@ export const metadata = {
   icons: {
     apple: '/icons/apple-touch-icon-180.png',
   },
-};
-
-export const viewport = {
-  themeColor: '#000000',
 };
 
 export default function RootLayout({ children }) {

@@ -1,17 +1,12 @@
 const CACHE = 'app-v4';
-const STATIC_ASSETS = [
-  // Do NOT cache the manifest to avoid stale metadata in DevTools
-  // '/manifest.json',
-  '/icons/icon-192.png',
-  '/icons/icon-512.png',
-  '/icons/apple-touch-icon-180.png',
-];
+// Precache only the app shell route. Do NOT include '/index.html' with Next.js.
+const ASSETS = ['/']; // do NOT include '/index.html' in production on Next.js
 
 self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
     try {
       const cache = await caches.open(CACHE);
-      await cache.addAll(STATIC_ASSETS);
+      await cache.addAll(ASSETS);
     } catch (err) {
       console.warn('[SW] install cache error:', err);
     } finally {
