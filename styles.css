@@ -142,6 +142,10 @@ header {
     object-fit: contain;
 }
 
+html.device-ios .app-logo {
+    height: 110px; /* was 180px on-screen */
+}
+
 .schedule-actions {
     display: flex;
     flex-direction: column;
