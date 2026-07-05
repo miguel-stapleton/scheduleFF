@@ -9,13 +9,14 @@
     "icons": "node scripts/generate-icons.mjs"
   },
   "dependencies": {
-    "dotenv": "^17.2.1",
     "dom-to-image": "^2.6.0",
+    "dotenv": "^17.2.1",
     "html2canvas": "^1.4.1",
+    "jspdf": "^2.5.1",
     "mongodb": "^6.18.0",
-    "next": "^15.1.0",
-    "react": "18.3.1",
-    "react-dom": "18.3.1"
+    "next": "^15.5.20",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
   },
   "devDependencies": {
     "sharp": "^0.33.4"
