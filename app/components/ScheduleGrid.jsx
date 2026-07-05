@@ -1,7 +1,7 @@
 "use client";
 import { useState, useCallback, useRef, useEffect } from 'react';
 
-export default function ScheduleGrid({ timeSlots, artists, clients, onUpdateClients, onUpdateArtists, onDeleteArtist, durations, onOpenEditBlockModal, onExtendEnd, onExtendStart }) {
+export default function ScheduleGrid({ timeSlots, artists, clients, onUpdateClients, onUpdateArtists, onDeleteArtist, artistOrder, onReorderArtists, durations, onOpenEditBlockModal, onExtendEnd, onExtendStart }) {
   const [draggedClient, setDraggedClient] = useState(null);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [isDraggingPanel, setIsDraggingPanel] = useState(false);
@@ -20,15 +20,50 @@ export default function ScheduleGrid({ timeSlots, artists, clients, onUpdateClie
   const [activeArtistIndex, setActiveArtistIndex] = useState(null);
   const activeArtistOriginalNameRef = useRef(null);
   const hasSavedHistoryForActiveArtistRef = useRef(false);
+  // Column reorder drag state — keyed by artist id, not display position.
+  // draggedColumnId/dragOverColumnId drive the visual state for both mouse (HTML5 DnD)
+  // and touch (long-press) column dragging.
+  const [draggedColumnId, setDraggedColumnId] = useState(null);
+  const [dragOverColumnId, setDragOverColumnId] = useState(null);
+  const [isColumnTouchDragging, setIsColumnTouchDragging] = useState(false);
+  const touchDraggedColumnIdRef = useRef(null);
+  const columnLongPressTimerRef = useRef(null);
+  const columnTouchStartPosRef = useRef({ x: 0, y: 0 });
+  const columnTouchLastPosRef = useRef({ x: 0, y: 0 });
 
   // Calculate time slot height (assuming each slot is 15 minutes)
   const timeSlotHeight = 30; // pixels per 15-minute slot
 
-  // Get all artist columns
+  // Get all artist columns. Each entry's position here is its stable "identity index" —
+  // the value stored on client blocks (client.artistIndex). Visual/display order is
+  // handled separately via artistOrder so columns can be dragged without touching client data.
   const allArtists = [
     ...artists.makeup.map(artist => ({ ...artist, specialty: 'makeup' })),
     ...artists.hair.map(artist => ({ ...artist, specialty: 'hair' }))
   ];
+
+  // Resolve the display order into a list of { artist, identityIndex }, using artistOrder
+  // (ids) and falling back gracefully for any artist not yet represented in it.
+  const orderedColumns = (() => {
+    const idToIdentityIndex = new Map(allArtists.map((a, idx) => [a.id, idx]));
+    const seen = new Set();
+    const columns = [];
+    (artistOrder || []).forEach(id => {
+      if (idToIdentityIndex.has(id) && !seen.has(id)) {
+        seen.add(id);
+        const identityIndex = idToIdentityIndex.get(id);
+        columns.push({ artist: allArtists[identityIndex], identityIndex });
+      }
+    });
+    // Any artist missing from artistOrder (e.g. no saved order yet) appears at the end
+    allArtists.forEach((artist, identityIndex) => {
+      if (!seen.has(artist.id)) {
+        seen.add(artist.id);
+        columns.push({ artist, identityIndex });
+      }
+    });
+    return columns;
+  })();
 
   // Handle drag start
   const handleDragStart = useCallback((e, client) => {
@@ -110,13 +145,18 @@ export default function ScheduleGrid({ timeSlots, artists, clients, onUpdateClie
     const el = document.elementFromPoint(x, y);
     if (!el) return -1;
     const columns = Array.from(gridRef.current.querySelectorAll('.artist-column'));
-    return columns.findIndex(col => col.contains(el));
+    // Columns render in display order, but the identity index (used on client blocks)
+    // is stored as a data attribute since it can differ from display position.
+    const column = columns.find(col => col.contains(el));
+    if (!column) return -1;
+    const idx = column.dataset.artistIndex;
+    return idx !== undefined ? parseInt(idx, 10) : -1;
   }, []);
 
   const findTimeIndexAtPoint = useCallback((x, y, artistIndex) => {
     if (!gridRef.current) return -1;
     const columns = Array.from(gridRef.current.querySelectorAll('.artist-column'));
-    const column = columns[artistIndex];
+    const column = columns.find(col => parseInt(col.dataset.artistIndex, 10) === artistIndex);
     if (!column) return -1;
     const schedule = column.querySelector('.artist-schedule');
     if (!schedule) return -1;
@@ -233,6 +273,103 @@ export default function ScheduleGrid({ timeSlots, artists, clients, onUpdateClie
     // Reuse existing drop logic
     handleDrop(e, artistIndex, index);
   }, [draggedClient, dragOffset.y, timeSlotHeight, timeSlots, handleDrop]);
+
+  // ----- Column reorder (drag artist header left/right) -----
+  const handleColumnDragStart = useCallback((e, artistId) => {
+    e.stopPropagation();
+    setDraggedColumnId(artistId);
+    try { e.dataTransfer.setData('application/x-artist-column', String(artistId)); } catch {}
+    e.dataTransfer.effectAllowed = 'move';
+  }, []);
+
+  const handleColumnDragEnd = useCallback(() => {
+    setDraggedColumnId(null);
+    setDragOverColumnId(null);
+  }, []);
+
+  const handleColumnHeaderDragOver = useCallback((e, artistId) => {
+    if (!draggedColumnId) return; // ignore unrelated drags (e.g. client blocks) passing over the header
+    e.preventDefault();
+    e.stopPropagation();
+    try { e.dataTransfer.dropEffect = 'move'; } catch {}
+    if (artistId !== dragOverColumnId) setDragOverColumnId(artistId);
+  }, [draggedColumnId, dragOverColumnId]);
+
+  const handleColumnHeaderDrop = useCallback((e, targetArtistId) => {
+    if (!draggedColumnId) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (onReorderArtists) onReorderArtists(draggedColumnId, targetArtistId);
+    setDraggedColumnId(null);
+    setDragOverColumnId(null);
+  }, [draggedColumnId, onReorderArtists]);
+
+  // ----- Column reorder (touch: long-press the handle, then drag) -----
+  const findColumnIdAtPoint = useCallback((x, y) => {
+    if (!gridRef.current) return null;
+    const el = document.elementFromPoint(x, y);
+    if (!el) return null;
+    const column = el.closest ? el.closest('.artist-column') : null;
+    if (!column || !gridRef.current.contains(column)) return null;
+    return column.dataset.artistId || null;
+  }, []);
+
+  const handleColumnTouchStart = useCallback((e, artistId) => {
+    if (!isTouchDevice) return;
+    if (!e.touches || e.touches.length === 0) return;
+    const t = e.touches[0];
+    columnTouchStartPosRef.current = { x: t.clientX, y: t.clientY };
+    columnTouchLastPosRef.current = { x: t.clientX, y: t.clientY };
+    touchDraggedColumnIdRef.current = artistId;
+    // Long-press to start, so a quick tap on the handle doesn't accidentally reorder
+    columnLongPressTimerRef.current = setTimeout(() => {
+      setIsColumnTouchDragging(true);
+      setDraggedColumnId(artistId);
+    }, 200);
+  }, [isTouchDevice]);
+
+  const handleColumnTouchMove = useCallback((e) => {
+    if (!isTouchDevice) return;
+    if (!e.touches || e.touches.length === 0) return;
+    const t = e.touches[0];
+    columnTouchLastPosRef.current = { x: t.clientX, y: t.clientY };
+    const dx = Math.abs(t.clientX - columnTouchStartPosRef.current.x);
+    const dy = Math.abs(t.clientY - columnTouchStartPosRef.current.y);
+    if (!isColumnTouchDragging && (dx > 10 || dy > 10)) {
+      if (columnLongPressTimerRef.current) {
+        clearTimeout(columnLongPressTimerRef.current);
+        columnLongPressTimerRef.current = null;
+      }
+      return;
+    }
+    if (isColumnTouchDragging) {
+      try { e.preventDefault(); } catch {}
+      const overId = findColumnIdAtPoint(t.clientX, t.clientY);
+      if (overId && overId !== dragOverColumnId) setDragOverColumnId(overId);
+    }
+  }, [isTouchDevice, isColumnTouchDragging, findColumnIdAtPoint, dragOverColumnId]);
+
+  const handleColumnTouchEnd = useCallback(() => {
+    if (!isTouchDevice) return;
+    if (columnLongPressTimerRef.current) {
+      clearTimeout(columnLongPressTimerRef.current);
+      columnLongPressTimerRef.current = null;
+    }
+    if (!isColumnTouchDragging) {
+      touchDraggedColumnIdRef.current = null;
+      return;
+    }
+    const { x, y } = columnTouchLastPosRef.current;
+    const targetId = findColumnIdAtPoint(x, y);
+    const draggedId = touchDraggedColumnIdRef.current;
+    if (draggedId && targetId && draggedId !== targetId && onReorderArtists) {
+      onReorderArtists(draggedId, targetId);
+    }
+    setIsColumnTouchDragging(false);
+    setDraggedColumnId(null);
+    setDragOverColumnId(null);
+    touchDraggedColumnIdRef.current = null;
+  }, [isTouchDevice, isColumnTouchDragging, findColumnIdAtPoint, onReorderArtists]);
 
   // Get client blocks positioned in the grid
   const getPositionedClients = useCallback(() => {
@@ -465,9 +602,32 @@ export default function ScheduleGrid({ timeSlots, artists, clients, onUpdateClie
 
       {/* Artists Container */}
       <div className="artists-container" ref={gridRef}>
-        {allArtists.map((artist, artistIndex) => (
-          <div key={`${artist.specialty}-${artistIndex}`} className="artist-column" style={{ flex: '1 1 0', minWidth: 0 }}>
-            <div className={`artist-header ${artist.specialty}`}>
+        {orderedColumns.map(({ artist, identityIndex: artistIndex }) => (
+          <div
+            key={artist.id}
+            className="artist-column"
+            data-artist-index={artistIndex}
+            data-artist-id={artist.id}
+            style={{ flex: '1 1 0', minWidth: 0 }}
+            onDragOver={(e) => handleColumnHeaderDragOver(e, artist.id)}
+            onDrop={(e) => handleColumnHeaderDrop(e, artist.id)}
+          >
+            <div
+              className={`artist-header ${artist.specialty}${draggedColumnId === artist.id ? ' column-dragging' : ''}${dragOverColumnId === artist.id && draggedColumnId !== artist.id ? ' column-drag-over' : ''}`}
+            >
+              <span
+                className="artist-drag-handle"
+                draggable
+                onDragStart={(e) => handleColumnDragStart(e, artist.id)}
+                onDragEnd={handleColumnDragEnd}
+                onTouchStart={(e) => handleColumnTouchStart(e, artist.id)}
+                onTouchMove={handleColumnTouchMove}
+                onTouchEnd={handleColumnTouchEnd}
+                title="Drag to reorder"
+                aria-label="Drag to reorder column"
+              >
+                ⠿
+              </span>
               <input
                 type="text"
                 value={artist.name}

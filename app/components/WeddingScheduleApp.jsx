@@ -38,10 +38,14 @@ const GUEST_COLORS = [
 export default function WeddingScheduleApp() {
   // Core state
   const [artists, setArtists] = useState({
-    makeup: [{ name: 'Make-up Artist', editable: true }],
-    hair: [{ name: 'Hairstylist', editable: true }]
+    makeup: [{ name: 'Make-up Artist', editable: true, id: 'a0' }],
+    hair: [{ name: 'Hairstylist', editable: true, id: 'a1' }]
   });
-  
+  // Display order of artist columns, referenced by stable artist id.
+  // Independent from the makeup/hair grouping so columns can be dragged into any order.
+  const [artistOrder, setArtistOrder] = useState(['a0', 'a1']);
+  const nextArtistIdRef = useRef(2);
+
   const [clients, setClients] = useState([]);
   const [nextGuestColorIndex, setNextGuestColorIndex] = useState(0);
   // Flag to suppress remap when restoring a snapshot (e.g., undo)
@@ -119,17 +123,18 @@ export default function WeddingScheduleApp() {
       state: {
         clients,
         artists,
+        artistOrder,
         settings,
         brideName
       }
     };
-    
+
     setActionHistory(prev => {
       const newHistory = [...prev, snapshot];
       // Keep only last 15 actions to prevent memory issues
       return newHistory.slice(-15);
     });
-  }, [clients, artists, settings, brideName]);
+  }, [clients, artists, artistOrder, settings, brideName]);
 
   // Undo functionality - restores previous state in chronological order
   const undoLastChange = useCallback(() => {
@@ -147,6 +152,7 @@ export default function WeddingScheduleApp() {
       setTimeSlots(restoredSlots);
       setClients(previousState.clients);
       setArtists(previousState.artists);
+      if (previousState.artistOrder) setArtistOrder(previousState.artistOrder);
       setSettings(previousState.settings);
       setBrideName(previousState.brideName);
       
@@ -292,16 +298,21 @@ export default function WeddingScheduleApp() {
   // Artist management
   const addArtist = useCallback((artistData) => {
     saveToHistory('addArtist', `Added ${artistData.specialty} artist: ${artistData.name}`);
-    
+
+    const newId = `a${nextArtistIdRef.current++}`;
+
     // Update artist list
     setArtists(prev => ({
       ...prev,
       [artistData.specialty]: [
         ...prev[artistData.specialty],
-        { name: artistData.name, editable: false }
+        { name: artistData.name, editable: false, id: newId }
       ]
     }));
-    
+
+    // New column joins the end of the display order
+    setArtistOrder(prev => [...prev, newId]);
+
     // Update client artistIndex values to account for new column positions
     setClients(prevClients => {
       return prevClients.map(client => {
@@ -342,12 +353,19 @@ export default function WeddingScheduleApp() {
       ? specialtyIndex
       : artists.makeup.length + specialtyIndex;
 
+    const removedId = artists[specialty][specialtyIndex]?.id;
+
     // Remove the artist from the list
     setArtists(prev => {
       const next = { ...prev };
       next[specialty] = prev[specialty].filter((_, idx) => idx !== specialtyIndex);
       return next;
     });
+
+    // Drop the removed column from the display order
+    if (removedId) {
+      setArtistOrder(prev => prev.filter(id => id !== removedId));
+    }
 
     // Remap clients: unschedule blocks assigned to removed artist; shift indices after it
     setClients(prevClients => prevClients.map(c => {
@@ -361,6 +379,21 @@ export default function WeddingScheduleApp() {
       return c;
     }));
   }, [artists, saveToHistory]);
+
+  // Reorder artist columns by dragging one artist's column before/after another's
+  const reorderArtists = useCallback((draggedId, targetId) => {
+    if (!draggedId || !targetId || draggedId === targetId) return;
+
+    const fromIndex = artistOrder.indexOf(draggedId);
+    const toIndex = artistOrder.indexOf(targetId);
+    if (fromIndex === -1 || toIndex === -1) return;
+
+    saveToHistory('reorderArtists', 'Reordered artist columns');
+    const next = [...artistOrder];
+    next.splice(fromIndex, 1);
+    next.splice(toIndex, 0, draggedId);
+    setArtistOrder(next);
+  }, [artistOrder, saveToHistory]);
 
   // Bride blocks management
   const createBrideBlocks = useCallback((name, overrideSettings = null) => {
@@ -784,6 +817,7 @@ export default function WeddingScheduleApp() {
     const scheduleData = {
       clients,
       artists,
+      artistOrder,
       settings,
       durations,
       brideName,
@@ -798,12 +832,13 @@ export default function WeddingScheduleApp() {
       throw new Error(err.error || 'Failed to save schedule');
     }
     return res.json();
-  }, [clients, artists, settings, durations, brideName]);
+  }, [clients, artists, artistOrder, settings, durations, brideName]);
 
   const updateScheduleById = useCallback(async (scheduleId, scheduleName) => {
     const scheduleData = {
       clients,
       artists,
+      artistOrder,
       settings,
       durations,
       brideName,
@@ -818,7 +853,7 @@ export default function WeddingScheduleApp() {
       throw new Error(err.error || 'Failed to update schedule');
     }
     return res.json();
-  }, [clients, artists, settings, durations, brideName]);
+  }, [clients, artists, artistOrder, settings, durations, brideName]);
 
   const loadScheduleById = useCallback(async (scheduleId) => {
     const res = await fetch(`/api/schedules/${scheduleId}`);
@@ -837,10 +872,30 @@ export default function WeddingScheduleApp() {
       return { ...c, duration, artistIndex, timeSlotIndex };
     });
     setClients(normalizedClients);
-    setArtists(scheduleData.artists || {
+
+    // Backfill ids for artists saved before column reordering existed,
+    // then reconcile the saved display order against the actual artist ids.
+    const assignMissingIds = (list) => (list || []).map((a) => {
+      if (a.id) return a;
+      return { ...a, id: `a${nextArtistIdRef.current++}` };
+    });
+    const incomingArtists = scheduleData.artists || {
       makeup: [{ name: 'Make-up Artist', editable: true }],
       hair: [{ name: 'Hairstylist', editable: true }],
-    });
+    };
+    const normalizedArtists = {
+      makeup: assignMissingIds(incomingArtists.makeup),
+      hair: assignMissingIds(incomingArtists.hair),
+    };
+    setArtists(normalizedArtists);
+
+    const allIds = [...normalizedArtists.makeup, ...normalizedArtists.hair].map((a) => a.id);
+    const savedOrder = Array.isArray(scheduleData.artistOrder)
+      ? scheduleData.artistOrder.filter((id) => allIds.includes(id))
+      : [];
+    const missingIds = allIds.filter((id) => !savedOrder.includes(id));
+    setArtistOrder([...savedOrder, ...missingIds]);
+
     setBrideName(scheduleData.brideName || '');
     const incomingSettings = scheduleData.settings || {
       brideHairTwoParts: false,
@@ -1040,6 +1095,8 @@ export default function WeddingScheduleApp() {
         }}
         onUpdateArtists={{ setArtists, saveToHistory }}
         onDeleteArtist={deleteArtist}
+        artistOrder={artistOrder}
+        onReorderArtists={reorderArtists}
         durations={durations}
         onOpenEditBlockModal={(block) => { setEditingBlock(block); openModal('editBlock'); }}
         onExtendEnd={extendVisibleEnd}
