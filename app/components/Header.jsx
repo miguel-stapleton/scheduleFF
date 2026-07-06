@@ -15,7 +15,10 @@ export default function Header({
   onCropSchedule,
   onUndo,
   isLocationEditMode,
-  onToggleLocationEditMode
+  onToggleLocationEditMode,
+  locationSpans,
+  onDeleteLocation,
+  onClearAllLocations
 }) {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [canInstall, setCanInstall] = useState(false);
@@ -158,12 +161,46 @@ export default function Header({
         >
           Export Schedule
         </button>
-        <button
-          className={`btn btn-secondary${isLocationEditMode ? ' active' : ''}`}
-          onClick={onToggleLocationEditMode}
-        >
-          {isLocationEditMode ? 'Done' : 'Set Location'}
-        </button>
+        <div className="location-menu-wrapper">
+          <button
+            className={`btn btn-secondary${isLocationEditMode ? ' active' : ''}`}
+            onClick={onToggleLocationEditMode}
+          >
+            {isLocationEditMode ? 'Done' : 'Set Location'}
+          </button>
+
+          {isLocationEditMode && (
+            <div className="location-menu">
+              {locationSpans && locationSpans.length > 0 ? (
+                <>
+                  {locationSpans.map(span => (
+                    <div key={span.id} className="location-menu-item">
+                      <span className="location-menu-item-name">{span.name || 'Unnamed'}</span>
+                      <button
+                        type="button"
+                        className="location-menu-delete"
+                        onClick={() => onDeleteLocation && onDeleteLocation(span.id)}
+                        aria-label={`Delete ${span.name || 'location'}`}
+                        title="Delete this location"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    className="location-menu-clear-all"
+                    onClick={onClearAllLocations}
+                  >
+                    Start Over
+                  </button>
+                </>
+              ) : (
+                <p className="location-menu-empty">Drag across the columns above to create a location.</p>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     </header>
   );

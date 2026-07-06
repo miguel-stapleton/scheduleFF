@@ -494,6 +494,29 @@ export default function WeddingScheduleApp() {
     setLocationSpans(prev => prev.map(span => span.id === spanId ? { ...span, name: newName } : span));
   }, []);
 
+  // Remove one location; its columns merge into the neighboring location (left, or right
+  // if it's the first one) so the board stays fully covered with no gaps.
+  const deleteLocation = useCallback((spanId) => {
+    saveToHistory('deleteLocation', 'Deleted a location group');
+    setLocationSpans(prev => {
+      const idx = prev.findIndex(span => span.id === spanId);
+      if (idx === -1) return prev;
+      if (prev.length === 1) return [];
+
+      const next = [...prev];
+      const removed = next[idx];
+      const neighborIdx = idx > 0 ? idx - 1 : idx + 1;
+      next[neighborIdx] = { ...next[neighborIdx], count: next[neighborIdx].count + removed.count };
+      next.splice(idx, 1);
+      return next;
+    });
+  }, [saveToHistory]);
+
+  const clearAllLocations = useCallback(() => {
+    saveToHistory('clearLocations', 'Cleared all location groups');
+    setLocationSpans([]);
+  }, [saveToHistory]);
+
   // Bride blocks management
   const createBrideBlocks = useCallback((name, overrideSettings = null) => {
     const currentSettings = overrideSettings || settings;
@@ -1192,6 +1215,9 @@ export default function WeddingScheduleApp() {
         onUndo={undoLastChange}
         isLocationEditMode={isLocationEditMode}
         onToggleLocationEditMode={toggleLocationEditMode}
+        locationSpans={locationSpans}
+        onDeleteLocation={deleteLocation}
+        onClearAllLocations={clearAllLocations}
       />
 
       <ScheduleGrid
