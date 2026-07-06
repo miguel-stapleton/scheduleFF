@@ -46,6 +46,15 @@ export default function WeddingScheduleApp() {
   const [artistOrder, setArtistOrder] = useState(['a0', 'a1']);
   const nextArtistIdRef = useRef(2);
 
+  // Location groups: an ordered list of { id, name, count } spans that partition the
+  // CURRENT column display order left-to-right (position-based, not tied to artist
+  // identity). Empty until "Set Location" is used for the first time. Because spans are
+  // positional, dragging a column into another location's slot re-labels it automatically —
+  // no bookkeeping needed on reorder.
+  const [locationSpans, setLocationSpans] = useState([]);
+  const [isLocationEditMode, setIsLocationEditMode] = useState(false);
+  const nextLocationLetterRef = useRef(0);
+
   const [clients, setClients] = useState([]);
   const [nextGuestColorIndex, setNextGuestColorIndex] = useState(0);
   // Flag to suppress remap when restoring a snapshot (e.g., undo)
@@ -124,6 +133,7 @@ export default function WeddingScheduleApp() {
         clients,
         artists,
         artistOrder,
+        locationSpans,
         settings,
         brideName
       }
@@ -134,7 +144,7 @@ export default function WeddingScheduleApp() {
       // Keep only last 15 actions to prevent memory issues
       return newHistory.slice(-15);
     });
-  }, [clients, artists, artistOrder, settings, brideName]);
+  }, [clients, artists, artistOrder, locationSpans, settings, brideName]);
 
   // Undo functionality - restores previous state in chronological order
   const undoLastChange = useCallback(() => {
@@ -153,6 +163,7 @@ export default function WeddingScheduleApp() {
       setClients(previousState.clients);
       setArtists(previousState.artists);
       if (previousState.artistOrder) setArtistOrder(previousState.artistOrder);
+      setLocationSpans(previousState.locationSpans || []);
       setSettings(previousState.settings);
       setBrideName(previousState.brideName);
       
@@ -313,6 +324,13 @@ export default function WeddingScheduleApp() {
     // New column joins the end of the display order
     setArtistOrder(prev => [...prev, newId]);
 
+    // The new column lands in the last display position, so it joins the last location span
+    setLocationSpans(prev => {
+      if (prev.length === 0) return prev;
+      const last = prev[prev.length - 1];
+      return [...prev.slice(0, -1), { ...last, count: last.count + 1 }];
+    });
+
     // Update client artistIndex values to account for new column positions
     setClients(prevClients => {
       return prevClients.map(client => {
@@ -354,6 +372,7 @@ export default function WeddingScheduleApp() {
       : artists.makeup.length + specialtyIndex;
 
     const removedId = artists[specialty][specialtyIndex]?.id;
+    const removedPosition = removedId ? artistOrder.indexOf(removedId) : -1;
 
     // Remove the artist from the list
     setArtists(prev => {
@@ -367,6 +386,27 @@ export default function WeddingScheduleApp() {
       setArtistOrder(prev => prev.filter(id => id !== removedId));
     }
 
+    // Shrink whichever location span covered the removed column's position; drop it if empty
+    if (removedPosition !== -1) {
+      setLocationSpans(prev => {
+        if (prev.length === 0) return prev;
+        let cursor = 0;
+        const next = [];
+        for (const span of prev) {
+          const start = cursor;
+          const end = cursor + span.count;
+          cursor = end;
+          if (removedPosition >= start && removedPosition < end) {
+            const newCount = span.count - 1;
+            if (newCount > 0) next.push({ ...span, count: newCount });
+          } else {
+            next.push(span);
+          }
+        }
+        return next;
+      });
+    }
+
     // Remap clients: unschedule blocks assigned to removed artist; shift indices after it
     setClients(prevClients => prevClients.map(c => {
       if (c.artistIndex === undefined) return c;
@@ -378,7 +418,7 @@ export default function WeddingScheduleApp() {
       }
       return c;
     }));
-  }, [artists, saveToHistory]);
+  }, [artists, artistOrder, saveToHistory]);
 
   // Reorder artist columns by dragging one artist's column before/after another's
   const reorderArtists = useCallback((draggedId, targetId) => {
@@ -394,6 +434,65 @@ export default function WeddingScheduleApp() {
     next.splice(toIndex, 0, draggedId);
     setArtistOrder(next);
   }, [artistOrder, saveToHistory]);
+
+  const toggleLocationEditMode = useCallback(() => {
+    setIsLocationEditMode(prev => !prev);
+  }, []);
+
+  const nextLocationName = useCallback(() => {
+    const letter = String.fromCharCode(65 + (nextLocationLetterRef.current % 26));
+    nextLocationLetterRef.current += 1;
+    return `Location ${letter}`;
+  }, []);
+
+  // Carve out [startPos, endPos] (inclusive, 0-indexed display positions) as a new named
+  // location span, splitting whatever it overlaps. Any portion left over from a span that
+  // didn't exist yet (i.e. the board had no locations at all) becomes its own new span too,
+  // so the very first selection always yields a fully-named partition.
+  const applyLocationSelection = useCallback((startPos, endPos) => {
+    const lo = Math.min(startPos, endPos);
+    const hi = Math.max(startPos, endPos);
+    const totalColumns = artistOrder.length;
+    if (lo < 0 || hi >= totalColumns) return;
+
+    saveToHistory('setLocation', 'Set location for selected columns');
+
+    const baseSpans = locationSpans.length > 0
+      ? locationSpans
+      : [{ id: `loc-${Date.now()}`, name: null, count: totalColumns }]; // null = not yet named
+
+    const next = [];
+    let cursor = 0;
+    for (const span of baseSpans) {
+      const start = cursor;
+      const end = cursor + span.count;
+      cursor = end;
+
+      const overlapStart = Math.max(start, lo);
+      const overlapEnd = Math.min(end, hi + 1);
+      if (overlapStart >= overlapEnd) {
+        // No overlap with the new selection — keep as-is (auto-name if it was a placeholder)
+        next.push(span.name === null ? { ...span, name: nextLocationName() } : span);
+        continue;
+      }
+
+      const beforeCount = overlapStart - start;
+      const afterCount = end - overlapEnd;
+      if (beforeCount > 0) {
+        next.push({ id: `${span.id}-a`, name: span.name || nextLocationName(), count: beforeCount });
+      }
+      next.push({ id: `loc-${Date.now()}-${cursor}`, name: nextLocationName(), count: overlapEnd - overlapStart });
+      if (afterCount > 0) {
+        next.push({ id: `${span.id}-b`, name: span.name || nextLocationName(), count: afterCount });
+      }
+    }
+
+    setLocationSpans(next);
+  }, [artistOrder, locationSpans, nextLocationName, saveToHistory]);
+
+  const renameLocation = useCallback((spanId, newName) => {
+    setLocationSpans(prev => prev.map(span => span.id === spanId ? { ...span, name: newName } : span));
+  }, []);
 
   // Bride blocks management
   const createBrideBlocks = useCallback((name, overrideSettings = null) => {
@@ -818,6 +917,7 @@ export default function WeddingScheduleApp() {
       clients,
       artists,
       artistOrder,
+      locationSpans,
       settings,
       durations,
       brideName,
@@ -832,13 +932,14 @@ export default function WeddingScheduleApp() {
       throw new Error(err.error || 'Failed to save schedule');
     }
     return res.json();
-  }, [clients, artists, artistOrder, settings, durations, brideName]);
+  }, [clients, artists, artistOrder, locationSpans, settings, durations, brideName]);
 
   const updateScheduleById = useCallback(async (scheduleId, scheduleName) => {
     const scheduleData = {
       clients,
       artists,
       artistOrder,
+      locationSpans,
       settings,
       durations,
       brideName,
@@ -853,7 +954,7 @@ export default function WeddingScheduleApp() {
       throw new Error(err.error || 'Failed to update schedule');
     }
     return res.json();
-  }, [clients, artists, artistOrder, settings, durations, brideName]);
+  }, [clients, artists, artistOrder, locationSpans, settings, durations, brideName]);
 
   const loadScheduleById = useCallback(async (scheduleId) => {
     const res = await fetch(`/api/schedules/${scheduleId}`);
@@ -895,6 +996,12 @@ export default function WeddingScheduleApp() {
       : [];
     const missingIds = allIds.filter((id) => !savedOrder.includes(id));
     setArtistOrder([...savedOrder, ...missingIds]);
+
+    // Location spans are position-based, so only trust them if they still add up to the
+    // current column count (e.g. an artist added/removed outside this normalization path).
+    const incomingSpans = Array.isArray(scheduleData.locationSpans) ? scheduleData.locationSpans : [];
+    const spansTotal = incomingSpans.reduce((sum, span) => sum + (span.count || 0), 0);
+    setLocationSpans(spansTotal === allIds.length ? incomingSpans : []);
 
     setBrideName(scheduleData.brideName || '');
     const incomingSettings = scheduleData.settings || {
@@ -1083,8 +1190,10 @@ export default function WeddingScheduleApp() {
         onOpenLoadModal={() => openModal('loadSchedules')}
         onCropSchedule={cropSchedule}
         onUndo={undoLastChange}
+        isLocationEditMode={isLocationEditMode}
+        onToggleLocationEditMode={toggleLocationEditMode}
       />
-      
+
       <ScheduleGrid
         timeSlots={timeSlots}
         artists={artists}
@@ -1097,6 +1206,10 @@ export default function WeddingScheduleApp() {
         onDeleteArtist={deleteArtist}
         artistOrder={artistOrder}
         onReorderArtists={reorderArtists}
+        locationSpans={locationSpans}
+        isLocationEditMode={isLocationEditMode}
+        onApplyLocationSelection={applyLocationSelection}
+        onRenameLocation={renameLocation}
         durations={durations}
         onOpenEditBlockModal={(block) => { setEditingBlock(block); openModal('editBlock'); }}
         onExtendEnd={extendVisibleEnd}

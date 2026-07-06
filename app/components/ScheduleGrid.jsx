@@ -1,7 +1,7 @@
 "use client";
 import { useState, useCallback, useRef, useEffect } from 'react';
 
-export default function ScheduleGrid({ timeSlots, artists, clients, onUpdateClients, onUpdateArtists, onDeleteArtist, artistOrder, onReorderArtists, durations, onOpenEditBlockModal, onExtendEnd, onExtendStart }) {
+export default function ScheduleGrid({ timeSlots, artists, clients, onUpdateClients, onUpdateArtists, onDeleteArtist, artistOrder, onReorderArtists, locationSpans, isLocationEditMode, onApplyLocationSelection, onRenameLocation, durations, onOpenEditBlockModal, onExtendEnd, onExtendStart }) {
   const [draggedClient, setDraggedClient] = useState(null);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [isDraggingPanel, setIsDraggingPanel] = useState(false);
@@ -30,6 +30,12 @@ export default function ScheduleGrid({ timeSlots, artists, clients, onUpdateClie
   const columnLongPressTimerRef = useRef(null);
   const columnTouchStartPosRef = useRef({ x: 0, y: 0 });
   const columnTouchLastPosRef = useRef({ x: 0, y: 0 });
+
+  // Location range selection — drag across the strip above the columns to mark
+  // a contiguous range (by display position) as one location.
+  const [locSelStart, setLocSelStart] = useState(null);
+  const [locSelEnd, setLocSelEnd] = useState(null);
+  const isLocDraggingRef = useRef(false);
 
   // Calculate time slot height (assuming each slot is 15 minutes)
   const timeSlotHeight = 30; // pixels per 15-minute slot
@@ -371,6 +377,46 @@ export default function ScheduleGrid({ timeSlots, artists, clients, onUpdateClie
     touchDraggedColumnIdRef.current = null;
   }, [isTouchDevice, isColumnTouchDragging, findColumnIdAtPoint, onReorderArtists]);
 
+  // ----- Location range selection (drag across the strip above the columns) -----
+  const handleLocationStripMouseDown = useCallback((position) => {
+    isLocDraggingRef.current = true;
+    setLocSelStart(position);
+    setLocSelEnd(position);
+  }, []);
+
+  const handleLocationStripMouseEnter = useCallback((position) => {
+    if (isLocDraggingRef.current) setLocSelEnd(position);
+  }, []);
+
+  const isPositionInSelection = useCallback((position) => {
+    if (locSelStart === null || locSelEnd === null) return false;
+    const lo = Math.min(locSelStart, locSelEnd);
+    const hi = Math.max(locSelStart, locSelEnd);
+    return position >= lo && position <= hi;
+  }, [locSelStart, locSelEnd]);
+
+  useEffect(() => {
+    const handleMouseUp = () => {
+      if (isLocDraggingRef.current && locSelStart !== null && locSelEnd !== null) {
+        if (onApplyLocationSelection) onApplyLocationSelection(locSelStart, locSelEnd);
+      }
+      isLocDraggingRef.current = false;
+      setLocSelStart(null);
+      setLocSelEnd(null);
+    };
+    document.addEventListener('mouseup', handleMouseUp);
+    return () => document.removeEventListener('mouseup', handleMouseUp);
+  }, [locSelStart, locSelEnd, onApplyLocationSelection]);
+
+  // Exiting location edit mode should drop any in-progress selection
+  useEffect(() => {
+    if (!isLocationEditMode) {
+      isLocDraggingRef.current = false;
+      setLocSelStart(null);
+      setLocSelEnd(null);
+    }
+  }, [isLocationEditMode]);
+
   // Get client blocks positioned in the grid
   const getPositionedClients = useCallback(() => {
     return clients.filter(client => 
@@ -539,6 +585,43 @@ export default function ScheduleGrid({ timeSlots, artists, clients, onUpdateClie
   }, [clients, timeSlots, artists, onUpdateClients]);
 
   return (
+    <>
+      {(locationSpans.length > 0 || isLocationEditMode) && (
+        <div className="location-bar-row">
+          <div className="location-bar-spacer" />
+          <div className="location-bar-columns">
+            {locationSpans.length > 0 ? (
+              locationSpans.map(span => (
+                <div key={span.id} className="location-bracket" style={{ flex: `${span.count} 1 0` }}>
+                  <input
+                    type="text"
+                    className="location-name-input"
+                    value={span.name || ''}
+                    onChange={(e) => onRenameLocation && onRenameLocation(span.id, e.target.value)}
+                  />
+                </div>
+              ))
+            ) : (
+              <div className="location-bracket location-bracket-empty" style={{ flex: '1 1 0' }} />
+            )}
+
+            {isLocationEditMode && (
+              <div className="location-select-overlay">
+                {orderedColumns.map((_, position) => (
+                  <div
+                    key={position}
+                    className={`location-select-cell${isPositionInSelection(position) ? ' selecting' : ''}`}
+                    style={{ flex: '1 1 0' }}
+                    onMouseDown={() => handleLocationStripMouseDown(position)}
+                    onMouseEnter={() => handleLocationStripMouseEnter(position)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
     <div className="schedule-container">
       {/* Time Column */}
       <div className="time-column">
@@ -812,5 +895,6 @@ export default function ScheduleGrid({ timeSlots, artists, clients, onUpdateClie
         </div>
       )}
     </div>
+    </>
   );
 }

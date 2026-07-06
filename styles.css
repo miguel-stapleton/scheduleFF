@@ -467,6 +467,77 @@ h1 {
     color: rgba(255, 255, 255, 0.8);
 }
 
+/* Location groups bar — sits above the artist headers, mirrors their widths */
+.location-bar-row {
+    display: flex;
+    align-items: stretch;
+}
+
+.location-bar-spacer {
+    flex: 0 0 100px;
+    width: 100px;
+}
+
+.location-bar-columns {
+    position: relative;
+    display: flex;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.location-bracket {
+    border: 2px solid #1a1a1a;
+    border-bottom: none;
+    margin-top: 6px;
+    padding: 4px 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 0;
+}
+
+.location-bracket-empty {
+    border-color: transparent;
+}
+
+.location-name-input {
+    background: transparent;
+    border: none;
+    color: #1a1a1a;
+    text-align: center;
+    font-weight: 500;
+    font-size: 13px;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    width: 100%;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.location-select-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+}
+
+.location-select-cell {
+    min-width: 0;
+    background: rgba(0, 200, 0, 0.18);
+    cursor: crosshair;
+    user-select: none;
+}
+
+.location-select-cell.selecting {
+    background: rgba(255, 0, 150, 0.4);
+}
+
+.btn.active {
+    background: #cc00a0;
+    color: #ffffff;
+}
+
 .artist-drag-handle {
     position: absolute;
     left: 2px;

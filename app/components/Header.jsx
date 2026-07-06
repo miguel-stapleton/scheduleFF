@@ -13,7 +13,9 @@ export default function Header({
   onOpenSaveModal,
   onOpenLoadModal,
   onCropSchedule,
-  onUndo 
+  onUndo,
+  isLocationEditMode,
+  onToggleLocationEditMode
 }) {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [canInstall, setCanInstall] = useState(false);
@@ -150,11 +152,17 @@ export default function Header({
         >
           Add Artist
         </button>
-        <button 
+        <button
           className="btn btn-success"
           onClick={onExport}
         >
           Export Schedule
+        </button>
+        <button
+          className={`btn btn-secondary${isLocationEditMode ? ' active' : ''}`}
+          onClick={onToggleLocationEditMode}
+        >
+          {isLocationEditMode ? 'Done' : 'Set Location'}
         </button>
       </div>
     </header>
