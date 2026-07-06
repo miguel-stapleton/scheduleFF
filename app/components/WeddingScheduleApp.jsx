@@ -987,6 +987,16 @@ export default function WeddingScheduleApp() {
     }
     const payload = await res.json();
     const scheduleData = payload?.data || {};
+
+    // Clients below already carry timeSlotIndex values relative to THIS schedule's saved
+    // start time. Flag this as a restore so the settings-change effect just accepts the new
+    // time slots instead of re-shifting clients against whatever start time was previously
+    // on screen (that double-shift was the source of schedules loading up to an hour off).
+    isRestoringRef.current = true;
+    const loadedTimeStartsAt = scheduleData.settings?.timeStartsAt || '06:00';
+    const loadedTimeFinishesAt = scheduleData.settings?.timeFinishesAt || '18:00';
+    setTimeSlots(generateTimeSlots(loadedTimeStartsAt, loadedTimeFinishesAt));
+
     // Normalize clients (coerce legacy fields to numbers)
     const normalizedClients = (scheduleData.clients || []).map((c) => {
       const parsedDuration = typeof c.duration === 'string' ? parseInt(c.duration, 10) : c.duration;
@@ -1068,7 +1078,7 @@ export default function WeddingScheduleApp() {
         .map(c => c.name)
     );
     setNextGuestColorIndex(uniqueGuestNames.size);
-  }, []);
+  }, [generateTimeSlots]);
 
   const getSavedSchedules = useCallback(async () => {
     const res = await fetch('/api/schedules');
